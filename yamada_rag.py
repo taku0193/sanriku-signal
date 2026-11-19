@@ -156,12 +156,14 @@ def make_ollama_decider(model, *, catalog=()):
     return decide
 
 
-def answer_question(question, records, decide, *, baseline=False, trace=False):
+def answer_question(question, records, decide, *, baseline=False, trace=False, on_search=None):
     def retrieve(query):
         hits = search(records, query)
+        ids = tuple(record["id"] for record in hits)
         if trace:
-            ids = ", ".join(record["id"] for record in hits) or "該当なし"
-            print(f"検索 {query!r} → {ids}", file=sys.stderr)
+            print(f"検索 {query!r} → {', '.join(ids) or '該当なし'}", file=sys.stderr)
+        if on_search is not None:
+            on_search(query, ids)
         return hits
 
     evidence = {record["id"]: record for record in retrieve(question)}

@@ -1,0 +1,93 @@
+[
+  {
+    "id": "museum-fee",
+    "category": "観光",
+    "question": "鯨と海の科学館の大人の入館料は？",
+    "expected_answer": "大人の一般料金は300円。",
+    "required_patterns": ["(?<![0-9])300\\s*円"],
+    "required_sources": {"museum-fees": "https://yamada-kujirakan.jp/facility/"}
+  },
+  {
+    "id": "museum-last-entry",
+    "category": "観光",
+    "question": "鯨と海の科学館の最終入館は何時ですか？",
+    "expected_answer": "最終入館は16:30。17:00は通常の閉館時刻。",
+    "required_patterns": ["(?:最終入館|入館|入場).{0,45}(?:16[:時]30|午後\\s*4時(?:半|30分))|(?:16[:時]30|午後\\s*4時(?:半|30分)).{0,25}(?:最終入館|入館|入場)"],
+    "required_sources": {"museum-hours": "https://yamada-kujirakan.jp/facility/"}
+  },
+  {
+    "id": "compare-by-name",
+    "category": "観光",
+    "question": "鯨と海の科学館と道の駅やまだは、通常どちらが遅く閉まりますか？",
+    "expected_answer": "科学館は17:00、道の駅やまだ おいすたは18:00に閉館し、おいすたの方が遅い。",
+    "required_patterns": ["(?:17[:時]00|17時|午後\\s*5時)", "(?:18[:時]00|18時|午後\\s*6時)", "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"],
+    "required_sources": {
+      "museum-hours": "https://yamada-kujirakan.jp/facility/",
+      "oisuta-hours": "https://yamada-oisuta.jp/"
+    }
+  },
+  {
+    "id": "compare-by-station",
+    "category": "観光",
+    "question": "岩手船越駅が最寄りの施設とおいすたは、通常どちらが遅く閉まりますか？",
+    "expected_answer": "岩手船越駅が最寄りの施設は鯨と海の科学館。科学館は17:00、おいすたは18:00に閉館し、おいすたの方が遅い。",
+    "required_patterns": ["鯨と海の科学館", "(?:17[:時]00|17時|午後\\s*5時)", "(?:18[:時]00|18時|午後\\s*6時)", "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"],
+    "required_sources": {
+      "museum-access": "https://yamada-kujirakan.jp/facility/",
+      "museum-hours": "https://yamada-kujirakan.jp/facility/",
+      "oisuta-hours": "https://yamada-oisuta.jp/"
+    }
+  },
+  {
+    "id": "pet-bottle-sorting",
+    "category": "くらし",
+    "question": "ペットボトルのふたとラベルはどう出しますか？",
+    "expected_answer": "ふたとラベルは本体から外してプラスチックに分別する。",
+    "required_patterns": ["(?:ふた|蓋|キャップ)", "ラベル", "(?:外[しす]|はが[しす]|剥が[しす]|取り外[しす])", "プラスチック"],
+    "required_sources": {"pet-bottles": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"}
+  },
+  {
+    "id": "oversized-waste-reservation",
+    "category": "くらし",
+    "question": "粗大ごみの収集はいつまでに、どこに申し込めばいいですか？",
+    "expected_answer": "収集月の20日までに芳賀清掃社へ申し込む。",
+    "required_patterns": ["収集(?:する)?(?:月|される月|がある月)", "(?<![0-9])20\\s*日", "芳賀清掃社"],
+    "required_sources": {"oversized-waste": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"}
+  },
+  {
+    "id": "household-waste-dropoff",
+    "category": "くらし",
+    "question": "山田町の家庭ごみを直接持ち込む場所はどこですか？",
+    "expected_answer": "宮古清掃センターの計量棟（宮古市千徳14地割111）。",
+    "required_patterns": ["宮古清掃センター", "計量棟", "千徳\\s*14\\s*地割\\s*111"],
+    "required_sources": {"waste-dropoff": "https://www.town.yamada.iwate.jp/docs/1272.html"}
+  },
+  {
+    "id": "collection-district-unknown",
+    "category": "くらし",
+    "question": "うちの地区のごみ収集日はいつですか？",
+    "expected_answer": "地区名を聞き返し、町の地区別日程表を案内する。具体的な収集日は推測しない。",
+    "required_patterns": ["(?:地区|地域).{0,25}(?:教えて|お知らせくださ|どちらですか|どこですか|お伺い)|(?:どの|どちらの)(?:地区|地域).{0,18}(?:ですか|でしょうか)"],
+    "forbidden_patterns": ["[0-9]{1,2}月[0-9]{1,2}日|(?:月|火|水|木|金|土|日)曜|(?:毎週|隔週)"],
+    "required_sources": {"collection-calendar": "https://www.town.yamada.iwate.jp/docs/8354.html"}
+  },
+  {
+    "id": "tomorrow-crowd-unknown",
+    "category": "観光",
+    "question": "明日の道の駅やまだは混んでいますか？",
+    "expected_answer": "収録した資料では明日の混雑を確認できないと伝える。混雑を予測せず、根拠として関係のない資料を挙げない。",
+    "required_patterns": ["(?:根拠|混雑|資料).{0,45}(?:確認できません|分かりません|わかりません|記載されていません|不明です)"],
+    "required_sources": {}
+  },
+  {
+    "id": "tourism-and-life",
+    "category": "観光・くらし",
+    "question": "科学館の大人の料金とペットボトルのふたの出し方は？",
+    "expected_answer": "科学館の大人料金は300円。ペットボトルのふたはプラスチックに分別する。",
+    "required_patterns": ["(?<![0-9])300\\s*円", "(?:ふた|蓋|キャップ)", "プラスチック"],
+    "required_sources": {
+      "museum-fees": "https://yamada-kujirakan.jp/facility/",
+      "pet-bottles": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
+    }
+  }
+]
