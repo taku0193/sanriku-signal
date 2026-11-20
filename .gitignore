@@ -1,2 +1,4 @@
 __pycache__/
 /evaluation-results.json
+/town_articles.json
+/town_articles*.tmp
