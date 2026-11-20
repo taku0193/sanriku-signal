@@ -1,0 +1,135 @@
+[
+  {
+    "id": "museum-fee-exact",
+    "category": "観光",
+    "kind": "exact",
+    "question": "鯨と海の科学館の大人の一般入館料はいくらですか？",
+    "expected_sources": [["museum-fees", "town-iju_osusume-2"]]
+  },
+  {
+    "id": "museum-fee-paraphrase",
+    "category": "観光",
+    "kind": "paraphrase",
+    "question": "クジラの博物館に大人が入るといくら？",
+    "expected_sources": [["museum-fees", "town-iju_osusume-2"]]
+  },
+  {
+    "id": "oisuta-hours-exact",
+    "category": "観光",
+    "kind": "exact",
+    "question": "道の駅やまだ おいすたの通常の閉館時刻は何時ですか？",
+    "expected_sources": [["oisuta-hours", "tourism-facilities-michinoeki-yamada-oisuta-2", "tourism-shiokaze-trail-13"]]
+  },
+  {
+    "id": "oisuta-hours-paraphrase",
+    "category": "観光",
+    "kind": "paraphrase",
+    "question": "おいすたは普段何時に閉店しますか？",
+    "expected_sources": [["oisuta-hours", "tourism-facilities-michinoeki-yamada-oisuta-2", "tourism-shiokaze-trail-13"]]
+  },
+  {
+    "id": "oisuta-restaurant-exact",
+    "category": "観光",
+    "kind": "exact",
+    "question": "道の駅やまだ おいすたのレストラン「うみっぷく」のラストオーダーは何時ですか？",
+    "expected_sources": [["oisuta-restaurant", "tourism-shiokaze-trail-12"]]
+  },
+  {
+    "id": "oisuta-restaurant-paraphrase",
+    "category": "観光",
+    "kind": "paraphrase",
+    "question": "道の駅やまだの食事処は、注文できるのが何時までですか？",
+    "expected_sources": [["oisuta-restaurant", "tourism-shiokaze-trail-12"]]
+  },
+  {
+    "id": "pet-bottle-exact",
+    "category": "くらし",
+    "kind": "exact",
+    "question": "ペットボトルのふたとラベルは、本体から外して何ごみに分ければよいですか？",
+    "expected_sources": [["pet-bottles"]]
+  },
+  {
+    "id": "pet-bottle-paraphrase",
+    "category": "くらし",
+    "kind": "paraphrase",
+    "question": "飲料用のPET容器のキャップはどう捨てる？",
+    "expected_sources": [["pet-bottles"]]
+  },
+  {
+    "id": "oversized-waste-exact",
+    "category": "くらし",
+    "kind": "exact",
+    "question": "粗大ごみの収集を申し込む期限と連絡先を教えてください。",
+    "expected_sources": [["oversized-waste"]]
+  },
+  {
+    "id": "oversized-waste-paraphrase",
+    "category": "くらし",
+    "kind": "paraphrase",
+    "question": "袋に入らない家具を回収してもらうには、いつまでに誰へ連絡しますか？",
+    "expected_sources": [["oversized-waste"]]
+  },
+  {
+    "id": "waste-dropoff-exact",
+    "category": "くらし",
+    "kind": "exact",
+    "question": "山田町の家庭ごみは宮古清掃センターに持ち込めますか？",
+    "expected_sources": [["waste-dropoff", "town-1272-1"]]
+  },
+  {
+    "id": "waste-dropoff-paraphrase",
+    "category": "くらし",
+    "kind": "paraphrase",
+    "question": "山田町で家のごみを処理施設へ直接持って行く場合、どこに運べばいい？",
+    "expected_sources": [["waste-dropoff", "town-1272-1"]]
+  },
+  {
+    "id": "closing-time-comparison",
+    "category": "観光",
+    "kind": "multi_source",
+    "question": "鯨と海の科学館と道の駅やまだ おいすたでは、通常どちらが遅く閉館しますか？",
+    "expected_sources": [["museum-hours", "town-iju_osusume-2", "tourism-shiokaze-trail-14"], ["oisuta-hours", "tourism-facilities-michinoeki-yamada-oisuta-2", "tourism-shiokaze-trail-13"]]
+  },
+  {
+    "id": "tourism-and-waste",
+    "category": "観光・くらし",
+    "kind": "multi_source",
+    "question": "鯨と海の科学館の大人料金はいくらで、飲料用PETボトルのキャップはどう分別しますか？",
+    "expected_sources": [["museum-fees", "town-iju_osusume-2"], ["pet-bottles"]]
+  },
+  {
+    "id": "station-and-closing-time-comparison",
+    "category": "観光",
+    "kind": "multi_source",
+    "question": "岩手船越駅が最寄りの施設と道の駅やまだ おいすたは、通常どちらが遅く閉まりますか？",
+    "expected_sources": [["museum-access"], ["museum-hours", "town-iju_osusume-2", "tourism-shiokaze-trail-14"], ["oisuta-hours", "tourism-facilities-michinoeki-yamada-oisuta-2", "tourism-shiokaze-trail-13"]]
+  },
+  {
+    "id": "rikuchuyamada-tourist-info-exact",
+    "category": "交通",
+    "kind": "exact",
+    "question": "陸中山田駅の構内に観光案内所はありますか？",
+    "expected_sources": [["santetsu-rikuchuyamada"]]
+  },
+  {
+    "id": "rikuchuyamada-tourist-info-paraphrase",
+    "category": "交通",
+    "kind": "paraphrase",
+    "question": "陸中山田駅で町の観光情報を尋ねる場所はありますか？",
+    "expected_sources": [["santetsu-rikuchuyamada"]]
+  },
+  {
+    "id": "yamada-hospital-location-exact",
+    "category": "医療機関",
+    "kind": "exact",
+    "question": "岩手県立山田病院の所在地はどこですか？",
+    "expected_sources": [["iwate-yamada-hospital", "town-iju_benri-9", "town-446-1"]]
+  },
+  {
+    "id": "yamada-hospital-location-paraphrase",
+    "category": "医療機関",
+    "kind": "paraphrase",
+    "question": "山田町の県立病院へ行くときの住所を教えてください。",
+    "expected_sources": [["iwate-yamada-hospital", "town-iju_benri-9", "town-446-1"]]
+  }
+]

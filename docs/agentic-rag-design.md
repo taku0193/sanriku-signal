@@ -80,16 +80,16 @@ flowchart TD
 
 ## 開発タスクの分担案
 
-開発ではSol・Astra・Lunaで作業を分担する。案内の回答と行動判断にはGemma 4 12Bを使う。定型データ整備も推論強度を `xhigh`（Extra high）以上にする。 [GPT-6 Lunaの設定](https://developers.openai.com/api/docs/models/gpt-6-luna) · [Codexのサブエージェント](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+開発ではSolとLunaで作業を分担する。案内の回答と行動判断にはGemma 4 12Bを使う。定型データ整備も推論強度を `xhigh`（Extra high）以上にする。 [GPT-6 Lunaの設定](https://developers.openai.com/api/docs/models/gpt-6-luna) · [Codexのサブエージェント](https://learn.chatgpt.com/docs/agent-configuration/subagents)
 
 | 開発担当 | モデルの候補 | 担当する成果物 |
 | --- | --- | --- |
-| 設計・統合レビュー | GPT-6.2 Astra、推論 `high` | 行動の形式、検索ツールとの境界、会話の引き継ぎ、評価結果のレビュー |
+| 設計・統合レビュー | GPT-6.2 Sol、推論 `high` | 行動の形式、検索ツールとの境界、会話の引き継ぎ、評価結果のレビュー |
 | ReAct・画面 | GPT-6.2 Sol、推論 `high` | 行動と観察のループ、Web API、聞き返しを続けられる画面 |
 | 埋め込み・検索 | GPT-6.2 Sol、推論 `medium` | 埋め込みAPIの接続、ベクトルのキャッシュ、検索候補の統合 |
 | 定型データ整備 | GPT-6 Luna、推論 `xhigh` 以上。Lunaを指定できない場合はGPT-6.2 Solの `xhigh` 以上 | 公式の地区名・資料URLの転記、評価ケースの整形 |
 
-行動と観察結果の形式を先に決め、ReAct、検索、評価データは、それぞれの担当ファイルを分けて進める。Astraのレビューでは、実装から独立した観点で出典と会話の引き継ぎを確認する。このチャットのサブエージェントではSolとAstraの明示指定を確認済み。Lunaの割り当ては利用できる環境で確認してから適用する。
+行動と観察結果の形式を先に決め、ReAct、検索、評価データは担当ファイルを分けて進める。統合レビューは同じGPT-6.2 Solを使う別の担当が行い、実装とは独立して出典と評価結果を確認する。レビュー担当にSolを使うことで、開発時のトークン消費を抑える。
 
 ## 実装順と確認項目
 
