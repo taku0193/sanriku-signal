@@ -17,18 +17,15 @@
             <span class="brand-mark" aria-hidden="true"></span>
             <div><strong>やまだ案内</strong><small>岩手県山田町</small></div>
           </div>
-          <div class="header-actions">
+          <div id="chat-header" class="header-actions" hidden>
             <p id="mode" class="mode" hidden></p>
-            <button id="new-chat" type="button" class="new-chat" hidden>
-              <span class="plus" aria-hidden="true"></span>新しい会話
-            </button>
           </div>
         </div>
       </header>
 
-      <main class="guide">
-        <div id="scroll-region" class="scroll-region">
-          <section id="welcome" class="welcome wide" aria-labelledby="page-title">
+      <main id="entry-screen" class="guide">
+        <div class="scroll-region">
+          <section class="welcome wide" aria-labelledby="page-title">
             <div class="welcome-copy">
               <h1 id="page-title">
                 <span class="title-line"><span>山田町のことを、</span></span>
@@ -45,16 +42,56 @@
               </figcaption>
             </figure>
           </section>
-          <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
         </div>
 
-        <div class="composer-area">
+        <section class="composer-area entry-dock" aria-labelledby="entry-title">
           <div class="dock-inner wide">
             <div class="dock-intro">
-              <h2>質問してみる</h2>
-              <p>施設の営業時間、ごみの収集日、<br class="desktop-break">町での手続きなど。</p>
+              <h2 id="entry-title">案内をはじめる</h2>
+              <p>チャット画面でお呼びする名前を入力してください。</p>
             </div>
-            <div class="dock-main">
+            <form id="entry-form" class="entry-form">
+              <label for="nickname">ニックネーム</label>
+              <div class="entry-input-row">
+                <input id="nickname" name="nickname" type="text" maxlength="24" autocomplete="nickname" required
+                  placeholder="例　なぎ" aria-describedby="entry-error">
+                <button type="submit" class="enter-button">案内へ進む <span aria-hidden="true">→</span></button>
+              </div>
+              <p id="entry-error" class="form-error" role="alert" hidden></p>
+              <noscript><p class="form-error">案内をはじめるにはJavaScriptを有効にしてください。</p></noscript>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      <main id="chat-screen" class="chat-screen" hidden>
+        <aside class="chat-rail" aria-label="会話の操作">
+          <button id="new-chat" type="button" class="new-chat">
+            <span class="plus" aria-hidden="true"></span>新しい会話
+          </button>
+          <div class="chat-rail-bottom">
+            <p id="profile-name" class="profile-name"></p>
+            <button id="back-to-entry" type="button" class="quiet-button">案内の入口へ戻る</button>
+          </div>
+        </aside>
+        <div class="guide">
+          <div id="scroll-region" class="scroll-region">
+            <section id="welcome" class="chat-welcome content" aria-labelledby="chat-heading">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <h1 id="chat-heading" tabindex="-1"><span id="greeting-name"></span>さん、こんにちは。</h1>
+              <p>山田町について、何を知りたいですか？</p>
+              <div class="examples" aria-label="質問例">
+                <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
+                <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
+                <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
+                <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
+              </div>
+            </section>
+            <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
+          </div>
+
+          <div class="composer-area chat-dock">
+            <div class="content">
               <form id="question-form" class="composer">
                 <label class="visually-hidden" for="question">山田町について質問する</label>
                 <div id="follow-up" class="follow-up" hidden>
@@ -72,14 +109,7 @@
                   </button>
                 </div>
                 <p id="form-error" class="form-error" role="alert" hidden></p>
-                <noscript><p class="form-error">質問するにはJavaScriptを有効にしてください。</p></noscript>
               </form>
-              <div class="examples" aria-label="質問例">
-                <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
-                <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
-                <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
-                <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
-              </div>
               <p class="composer-foot">
                 <span>学習用の試作です。最新情報は出典をご確認ください。</span>
                 <a href="https://www.town.yamada.iwate.jp/" target="_blank" rel="noopener">山田町公式サイト <span aria-hidden="true">↗</span></a>

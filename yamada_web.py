@@ -13,6 +13,7 @@ from yamada_react import make_react_decider, run_turn
 
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/chat": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/yamada-bay.webp": ("yamada-bay.webp", "image/webp"),

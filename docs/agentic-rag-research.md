@@ -104,3 +104,5 @@ ReActの検索が進む間も利用者に状態を伝えられるよう、ブラ
 ハイブリッド検索を使った既存の回答評価は、変更前後とも10問中8問が合格だった。駅名から施設を推定する比較と、翌日の混雑についての質問は両方で要確認となった。
 
 トップの見出しと写真、会話に入るときの入力欄、検索の状態表示、回答と出典に動きを加えた。単体HTMLでも動かせるよう、CSSとブラウザー標準のWeb Animations APIを採用した。ChromeでGPU版の回答と出典が表示されること、幅390ピクセルで動きを減らす設定を有効にすると演出が省略されることを確認した。 [Web Animations](https://www.w3.org/TR/web-animations-1/) · [動きを減らす設定](https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion)
+
+APU-Naviで名前を入力した後にチャット画面へ切り替わる流れを確認し、山田町案内も入口とチャットを分けた。Webでは `/chat`、単体HTMLでは `#chat` に進む。呼び名はブラウザーのタブ内で挨拶に使い、質問APIには送らない。Chromeで戻る・進む、チャット画面の再読み込み、名前の変更、スマートフォン幅の操作を確認した。 [APU-Navi](https://ibera.cps.akita-pu.ac.jp/) · [History API](https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-history-interface) · [セッションストレージ](https://html.spec.whatwg.org/multipage/webstorage.html#the-sessionstorage-attribute)

@@ -1,6 +1,16 @@
 "use strict";
 
 const app = document.querySelector(".app");
+const entryScreen = document.querySelector("#entry-screen");
+const entryForm = document.querySelector("#entry-form");
+const entryError = document.querySelector("#entry-error");
+const nicknameInput = document.querySelector("#nickname");
+const chatScreen = document.querySelector("#chat-screen");
+const chatHeader = document.querySelector("#chat-header");
+const chatHeading = document.querySelector("#chat-heading");
+const greetingName = document.querySelector("#greeting-name");
+const profileName = document.querySelector("#profile-name");
+const backToEntry = document.querySelector("#back-to-entry");
 const form = document.querySelector("#question-form");
 const question = document.querySelector("#question");
 const submit = document.querySelector("#submit");
@@ -15,6 +25,11 @@ const conversation = document.querySelector("#conversation");
 const scrollRegion = document.querySelector("#scroll-region");
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
+const entryUrl = new URL(offlineSearch ? location.href : "/", location.href);
+entryUrl.hash = "";
+const chatUrl = new URL(offlineSearch ? "#chat" : "/chat", entryUrl);
+const entryTitle = document.title;
+const nicknameKey = "yamada-guide-nickname";
 const eventType = "application/x-ndjson";
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const progressLabels = {
@@ -26,6 +41,7 @@ const progressLabels = {
 let pending = null;
 let recentTurns = [];
 let active = null;
+let nickname = savedNickname();
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -37,6 +53,42 @@ function element(tag, className, content) {
 function showText(node, content) {
   node.textContent = content;
   node.hidden = !content;
+}
+
+function savedNickname() {
+  try {
+    const name = sessionStorage.getItem(nicknameKey)?.trim() ?? "";
+    return name.length <= nicknameInput.maxLength ? name : "";
+  } catch {
+    return "";
+  }
+}
+
+function showScreen(moveFocus = false) {
+  const wantsChat = offlineSearch ? location.hash === "#chat" : location.pathname === chatUrl.pathname;
+  const inChat = wantsChat && nickname !== "";
+  const wasInChat = !chatScreen.hidden;
+  if (wantsChat && !inChat) history.replaceState(null, "", entryUrl);
+  entryScreen.hidden = inChat;
+  chatScreen.hidden = !inChat;
+  chatHeader.hidden = !inChat;
+  app.classList.toggle("in-chat", inChat);
+  document.title = inChat ? "やまだ案内 | チャット" : entryTitle;
+
+  if (inChat) {
+    greetingName.textContent = nickname;
+    profileName.textContent = nickname;
+    updateComposer();
+    if (moveFocus && !wasInChat) (welcome.hidden ? question : chatHeading).focus({ preventScroll: true });
+  } else if (wasInChat) {
+    active?.abort();
+    if (moveFocus) nicknameInput.focus({ preventScroll: true });
+  }
+}
+
+function navigate(url) {
+  history.pushState(null, "", url);
+  showScreen(true);
 }
 
 function bottomIsVisible() {
@@ -233,7 +285,6 @@ function createTurn(query) {
   conversation.append(turn);
   conversation.hidden = false;
   welcome.hidden = true;
-  newChat.hidden = false;
   app.classList.add("in-conversation");
   scrollToBottom();
   return { row, title, body, progress };
@@ -311,7 +362,7 @@ function displayFailure(view, query, message, stopped) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (active) return;
+  if (active || chatScreen.hidden) return;
   const query = question.value.trim();
   if (!query) {
     showText(formError, pending ? "地区名を入力してください。" : "質問を入力してください。");
@@ -373,22 +424,46 @@ question.addEventListener("keydown", (event) => {
   if (!active && question.value.trim()) form.requestSubmit();
 });
 
+function resetConversation() {
+  active?.abort();
+  active = null;
+  pending = null;
+  recentTurns = [];
+  conversation.replaceChildren();
+  conversation.hidden = true;
+  welcome.hidden = false;
+  app.classList.remove("in-conversation");
+  question.value = "";
+  showText(formError, "");
+  scrollRegion.scrollTop = 0;
+  updateComposer();
+}
+
+entryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = nicknameInput.value.trim();
+  if (!name || name.length > nicknameInput.maxLength) {
+    showText(entryError, "ニックネームは1〜24文字で入力してください。");
+    nicknameInput.focus();
+    return;
+  }
+  if (nickname !== name) resetConversation();
+  nickname = name;
+  nicknameInput.value = name;
+  try {
+    sessionStorage.setItem(nicknameKey, name);
+  } catch {
+    // ストレージを使えない場合も、開いているページ内で名前を使う。
+  }
+  navigate(chatUrl);
+});
+nicknameInput.addEventListener("input", () => showText(entryError, ""));
+backToEntry.addEventListener("click", () => navigate(entryUrl));
+window.addEventListener("popstate", () => showScreen(true));
+
 newChat.addEventListener("click", () => {
-  transitionComposer(() => {
-    active?.abort();
-    active = null;
-    pending = null;
-    recentTurns = [];
-    conversation.replaceChildren();
-    conversation.hidden = true;
-    welcome.hidden = false;
-    newChat.hidden = true;
-    app.classList.remove("in-conversation");
-    question.value = "";
-    showText(formError, "");
-    scrollRegion.scrollTop = 0;
-    updateComposer();
-  });
+  if (welcome.hidden) transitionComposer(resetConversation);
+  else resetConversation();
   question.focus();
 });
 
@@ -423,5 +498,6 @@ async function loadSettings() {
   }
 }
 
-updateComposer();
+nicknameInput.value = nickname;
+showScreen();
 loadSettings();
