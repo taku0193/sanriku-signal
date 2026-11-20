@@ -12,6 +12,7 @@
   --dock-ink: #f0f8ef;
   --dock-muted: #bbd3c7;
   --accent: #aee4cf;
+  --motion-out: cubic-bezier(.2, .75, .25, 1);
   font: 100%/1.65 "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", sans-serif;
   color: var(--ink);
   background: var(--paper);
@@ -119,6 +120,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   line-height: 1.19;
   letter-spacing: -.055em;
 }
+.title-line, .title-line > span { display: block; }
 .welcome-copy > p { margin-top: 1.22rem; color: var(--muted); font-size: clamp(.91rem, 1.45vw, 1.15rem); }
 .place {
   margin: 0;
@@ -168,8 +170,8 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .message-content code { padding: .1rem .24rem; border-radius: .25rem; background: #e9eee8; }
 .message-content .notice, .message-content .stopped { color: var(--muted); font-size: .87rem; }
 .message-status { display: flex; align-items: center; gap: .65rem; color: var(--muted); font-size: .87rem; }
-.pulse { width: .52rem; height: .52rem; flex: none; border-radius: 50%; background: var(--teal); animation: pulse 1.4s ease-out infinite; }
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 55% { box-shadow: 0 0 0 .28rem #a2d1bb70; } }
+.activity-dots { display: inline-flex; align-items: center; gap: .17rem; flex: none; }
+.activity-dots > span { width: .29rem; height: .29rem; border-radius: 50%; background: var(--teal); }
 
 .message-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin-top: .55rem; }
 .quiet-button, .sources > summary {
@@ -186,7 +188,26 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .quiet-button:hover, .sources > summary:hover { border-color: var(--line); background: #e8f2e9; }
 .copy-status { color: var(--muted); font-size: .78rem; }
 .sources { margin-top: .72rem; }
-.sources > summary { width: fit-content; cursor: pointer; border-color: var(--line); background: var(--surface); }
+.sources > summary {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  width: fit-content;
+  cursor: pointer;
+  border-color: var(--line);
+  background: var(--surface);
+  list-style: none;
+}
+.sources > summary::-webkit-details-marker { display: none; }
+.sources > summary::before {
+  content: "";
+  width: .36rem;
+  height: .36rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
+.sources[open] > summary::before { transform: rotate(45deg); }
 .sources-list { display: grid; gap: .6rem; margin-top: .55rem; }
 .source { padding: .68rem .82rem; border: 1px solid var(--line); background: var(--surface); border-radius: .65rem; }
 .source h3 { font-size: .89rem; line-height: 1.5; }
@@ -221,6 +242,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   border-radius: .91rem;
   padding: .36rem;
   background: var(--dock-input);
+  transform-origin: top left;
 }
 .composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px #a9d4c043; }
 .input-row { display: flex; align-items: flex-end; gap: .35rem; }
@@ -343,4 +365,55 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .welcome { align-content: start; }
   .place img { aspect-ratio: 3.3; }
 }
-@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+@keyframes title-arrive {
+  from { opacity: 0; transform: translateY(82%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(var(--rise-distance, 9px)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes photo-settle {
+  from { transform: scale(1.055); }
+  to { transform: scale(1); }
+}
+
+@keyframes activity {
+  0%, 65%, 100% { opacity: .45; transform: translateY(0); }
+  34% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .title-line { overflow: clip; overflow-clip-margin: .08em; }
+  .title-line > span { animation: title-arrive 610ms var(--motion-out) both; }
+  .title-line + .title-line > span { animation-delay: 105ms; }
+  .welcome-copy > p { animation: rise-in 430ms var(--motion-out) 170ms both; }
+  .place { --rise-distance: 15px; animation: rise-in 660ms var(--motion-out) 105ms both; }
+  .place img { animation: photo-settle 880ms var(--motion-out) both; }
+  .dock-intro, .examples { animation: rise-in 390ms var(--motion-out) 145ms both; }
+  .composer-area { transition: border-radius 420ms var(--motion-out); }
+  .composer { transition: border-color 160ms ease, box-shadow 160ms ease; }
+  .send-button { transition: background-color 140ms ease, transform 140ms var(--motion-out); }
+  .send-button:active:not(:disabled) { transform: scale(.93); }
+  .example { transition: background-color 160ms ease, border-color 160ms ease, transform 160ms var(--motion-out); }
+  .example:active { transform: translateY(1px); }
+  .user-message { animation: rise-in 275ms var(--motion-out) both; }
+  .guide-message { animation: rise-in 295ms var(--motion-out) 65ms both; }
+  .activity-dots > span { animation: activity 1.1s ease-in-out infinite; }
+  .activity-dots > span:nth-child(2) { animation-delay: 120ms; }
+  .activity-dots > span:nth-child(3) { animation-delay: 240ms; }
+  .result-ready .message-content > *,
+  .result-ready .sources,
+  .result-ready .message-tools { animation: rise-in 320ms var(--motion-out) both; }
+  .result-ready .message-content > :nth-child(2) { animation-delay: 45ms; }
+  .result-ready .message-content > :nth-child(n + 3) { animation-delay: 85ms; }
+  .result-ready .sources, .result-ready .message-tools { animation-delay: 105ms; }
+  .sources > summary::before { transition: transform 200ms var(--motion-out); }
+  .sources[open] .sources-list { animation: rise-in 250ms var(--motion-out) both; }
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .example:hover { transform: translateY(-2px); }
+}

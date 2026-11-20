@@ -16,6 +16,7 @@ const scrollRegion = document.querySelector("#scroll-region");
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
 const eventType = "application/x-ndjson";
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const progressLabels = {
   planning: "質問を確認しています…",
   searching: "山田町の資料を探しています…",
@@ -44,6 +45,35 @@ function bottomIsVisible() {
 
 function scrollToBottom() {
   scrollRegion.scrollTop = scrollRegion.scrollHeight;
+}
+
+function transitionComposer(update) {
+  if (reducedMotion.matches || !form.animate) return update();
+  const before = form.getBoundingClientRect();
+  form.getAnimations().forEach((animation) => animation.cancel());
+  const result = update();
+  const after = form.getBoundingClientRect();
+  const deltaX = before.x - after.x;
+  const deltaY = before.y - after.y;
+  const widthRatio = before.width / after.width;
+  const heightRatio = before.height / after.height;
+  form.animate([
+    { transform: `translate(${deltaX}px, ${deltaY}px) scale(${widthRatio}, ${heightRatio})` },
+    { transform: "none" },
+  ], { duration: 420, easing: "cubic-bezier(.2,.75,.25,1)" });
+  return result;
+}
+
+function updateProgress(progress, stage) {
+  const label = progressLabels[stage];
+  if (!label || progress.textContent === label) return;
+  progress.textContent = label;
+  if (reducedMotion.matches || !progress.animate) return;
+  progress.getAnimations().forEach((animation) => animation.cancel());
+  progress.animate([
+    { opacity: .5, transform: "translateY(4px)" },
+    { opacity: 1, transform: "translateY(0)" },
+  ], { duration: 180, easing: "ease-out" });
 }
 
 function updateComposer() {
@@ -191,10 +221,11 @@ function createTurn(query) {
   const body = element("div", "message-content");
   body.setAttribute("aria-live", "polite");
   const status = element("p", "message-status");
-  const pulse = element("span", "pulse");
-  pulse.setAttribute("aria-hidden", "true");
+  const activity = element("span", "activity-dots");
+  activity.setAttribute("aria-hidden", "true");
+  activity.append(element("span"), element("span"), element("span"));
   const progress = element("span", "", progressLabels.planning);
-  status.append(pulse, progress);
+  status.append(activity, progress);
   body.append(status);
   row.append(title, body);
   guideMessage.append(mark, row);
@@ -221,6 +252,7 @@ function displayResult(view, result) {
   } else {
     attachCopy(view.row, result.prompt, "質問と資料をコピー");
   }
+  view.row.classList.add("result-ready");
 }
 
 async function readEvents(response, onProgress) {
@@ -294,12 +326,12 @@ form.addEventListener("submit", async (event) => {
   question.value = "";
   showText(formError, "");
   updateComposer();
-  const view = createTurn(query);
+  const view = welcome.hidden ? createTurn(query) : transitionComposer(() => createTurn(query));
   if (fromExample) view.title.focus({ preventScroll: true });
   try {
     const result = await ask(query, currentPending, controller.signal, (stage) => {
       const atBottom = bottomIsVisible();
-      if (progressLabels[stage]) view.progress.textContent = progressLabels[stage];
+      updateProgress(view.progress, stage);
       if (atBottom) scrollToBottom();
     });
     if (active !== controller) return;
@@ -342,19 +374,21 @@ question.addEventListener("keydown", (event) => {
 });
 
 newChat.addEventListener("click", () => {
-  active?.abort();
-  active = null;
-  pending = null;
-  recentTurns = [];
-  conversation.replaceChildren();
-  conversation.hidden = true;
-  welcome.hidden = false;
-  newChat.hidden = true;
-  app.classList.remove("in-conversation");
-  question.value = "";
-  showText(formError, "");
-  scrollRegion.scrollTop = 0;
-  updateComposer();
+  transitionComposer(() => {
+    active?.abort();
+    active = null;
+    pending = null;
+    recentTurns = [];
+    conversation.replaceChildren();
+    conversation.hidden = true;
+    welcome.hidden = false;
+    newChat.hidden = true;
+    app.classList.remove("in-conversation");
+    question.value = "";
+    showText(formError, "");
+    scrollRegion.scrollTop = 0;
+    updateComposer();
+  });
   question.focus();
 });
 
