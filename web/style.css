@@ -144,11 +144,9 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 }
 .welcome {
   display: grid;
-  grid-template-rows: minmax(min-content, 1fr) auto;
-  gap: 1.2rem;
-  padding-block: clamp(1.75rem, 6vh, 4.3rem) 1.15rem;
+  align-content: center;
+  padding-block: clamp(1.2rem, 5vh, 3.5rem);
 }
-.coast-copy { align-self: center; }
 .welcome-copy h1 {
   font-family: "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
   font-size: clamp(2.7rem, 5.15vw, 5rem);
@@ -158,38 +156,20 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 }
 .title-line, .title-line > span { display: block; }
 .welcome-copy > p { margin-top: 1.22rem; color: #e0ede8; font-size: clamp(.91rem, 1.45vw, 1.15rem); }
-.coast-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: end;
-  gap: .4rem .75rem;
-  color: #e0ede8;
-  font-size: .74rem;
+.coast-view-toggle {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
-.coast-control {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: .38rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: .35rem .72rem;
-  border: 1px solid #cee8de66;
-  border-radius: 2rem;
-  background: #0b2229e8;
-  color: #f5fbf7;
-  white-space: nowrap;
-}
-.coast-control:hover { background: #193c40; }
-.coast-control:focus-visible { outline-color: #c1ffec; }
-.coast-playback { position: relative; z-index: 1; }
-.coast-view-toggle::before { content: ""; position: absolute; inset: 0; }
-.coast-view-icon { font-size: 1.12rem; line-height: 1; }
+.coast-view-toggle:focus-visible { outline-color: #c1ffec; outline-offset: -4px; }
 .coast-hero[data-scenery-only="true"] .coast-backdrop::after,
-.coast-hero[data-scenery-only="true"] .coast-copy,
-.coast-hero[data-scenery-only="true"] .coast-caption { opacity: 0; }
-.coast-hero[data-scenery-only="true"] .coast-copy { transform: translateY(9px); }
+.coast-hero[data-scenery-only="true"] .coast-copy { opacity: 0; }
+.coast-hero[data-scenery-only="true"] .welcome-copy { transform: translateY(9px); }
 
 .in-chat .header-inner { width: calc(100% - 2.25rem); min-height: 4rem; }
 .chat-screen { display: grid; grid-template-columns: 12.8rem minmax(0, 1fr); min-height: 0; }
@@ -530,12 +510,10 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .profile-name { display: none; }
   .new-chat { min-height: 2.15rem; padding-inline: .48rem; }
   .chat-welcome h1 { font-size: clamp(1.74rem, 7.8vw, 2.85rem); }
-  .welcome { gap: 1rem; padding-block: 1.2rem .8rem; }
   .welcome-copy h1 { font-size: clamp(2.18rem, 9.6vw, 3.4rem); }
   .welcome-copy > p { margin-top: .65rem; font-size: .83rem; }
   .coast-backdrop img, .coast-video { object-position: 59% 50%; }
   .coast-backdrop::after { background: linear-gradient(90deg, #071f26c9, #0922293d), linear-gradient(0deg, #091f25cf, transparent 38%); }
-  .coast-tools { font-size: .69rem; }
   .entry-dock { padding-block: .85rem max(.95rem, env(safe-area-inset-bottom)); }
   .chat-dock { padding-block: .65rem max(.65rem, env(safe-area-inset-bottom)); }
   .dock-inner { display: block; }
@@ -582,8 +560,9 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .title-line + .title-line > span { animation-delay: 105ms; }
   .welcome-copy > p { animation: rise-in 430ms var(--motion-out) 170ms both; }
   .coast-video { transition: opacity 220ms ease; }
-  .coast-copy { transition: opacity 330ms ease, transform 380ms var(--motion-out); }
-  .coast-caption, .coast-backdrop::after { transition: opacity 330ms ease; }
+  .coast-copy { transition: opacity 330ms ease; }
+  .welcome-copy { transition: transform 380ms var(--motion-out); }
+  .coast-backdrop::after { transition: opacity 330ms ease; }
   .dock-intro, .examples { animation: rise-in 390ms var(--motion-out) 145ms both; }
   .entry-form { animation: rise-in 410ms var(--motion-out) 195ms both; }
   .chat-welcome { animation: rise-in 430ms var(--motion-out) both; }
