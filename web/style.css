@@ -573,6 +573,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .activity-dots > span { animation: activity 1.1s ease-in-out infinite; }
   .activity-dots > span:nth-child(2) { animation-delay: 120ms; }
   .activity-dots > span:nth-child(3) { animation-delay: 240ms; }
+  .progress-caption { --rise-distance: 4px; animation: rise-in 180ms ease-out both; }
   .streaming-answer::after { animation: answer-caret 1.05s ease-in-out infinite; }
   .result-ready:not(.has-streamed) .message-content > *,
   .result-ready .answer-photos,

@@ -1,5 +1,6 @@
 __pycache__/
 /.runtime/
+/node_modules/
 /evaluation-results.json
 /town_articles.json
 /town_articles*.tmp

@@ -122,3 +122,9 @@ RTX 3090 Tiで科学館の開館時間・休館日・入館料をまとめて尋
 ストリーミングで入館料を尋ねたとき、Gemmaが取得した資料IDの記号を変えたため、出典照合で回答が止まる例を確認した。構造化出力の出典IDを取得済みのIDから選べるようにし、科学館・おいすた・織笠駅の個別質問、2施設の比較、写真がない収集日の表示を確認した。 [Ollamaの構造化出力](https://docs.ollama.com/capabilities/structured-outputs)
 
 変更後のストリーミング回答評価は10問中9問が合格した。翌日の混雑は今回も要確認だった。
+
+## ReactとTypeScriptへの移行
+
+入口、会話欄、回答の描画をReactのコンポーネントに移し、質問・会話履歴・進捗イベント・出典・写真のデータ構造をTypeScriptで定義した。ViteでReactを含むスクリプトを1つにまとめ、Pythonサーバーでの配信と単体HTMLの両方に使う。 [ReactのTypeScriptガイド](https://react.dev/learn/typescript) · [Viteの本番ビルド](https://vite.dev/guide/build.html)
+
+`npm ci` から型チェックとビルドを実行し、Chromeで入口と会話の遷移、再読み込み、生成中の停止、出典・写真・コピー、ごみ収集日の聞き返しを確認した。単体HTMLの資料検索と写真表示も確認した。
