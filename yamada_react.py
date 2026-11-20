@@ -138,6 +138,10 @@ def make_react_decider(model):
         instructions = f"{INSTRUCTIONS}\n\n{HISTORY_INSTRUCTIONS}" if state.get("history") else INSTRUCTIONS
         if on_content is not None:
             properties = schema["properties"]
+            source_ids = dict.fromkeys(
+                source_id for observation in state["observations"] for source_id in observation["source_ids"]
+            )
+            properties["sources"]["items"]["enum"] = list(source_ids)
             ordered = {key: properties[key] for key in ("action", "sources", "answer")}
             ordered.update(properties)
             schema["properties"] = ordered

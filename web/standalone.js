@@ -1,6 +1,6 @@
 "use strict";
 
-function createOfflineSearch({ records, limit, instructions, noEvidence }) {
+function createOfflineSearch({ records, limit, instructions, noEvidence, photos = [], photoLimit = 2 }) {
   function normalize(text) {
     return text.normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, (char) =>
       String.fromCharCode(char.charCodeAt(0) - 0x60)
@@ -27,6 +27,7 @@ function createOfflineSearch({ records, limit, instructions, noEvidence }) {
       else firstPerSource.set(record.url, record);
     }
     const sources = [...firstPerSource.values(), ...remaining].slice(0, limit);
+    const sourceIds = new Set(sources.map((record) => record.id));
     const sections = sources.map((record) =>
       `[${record.id}] ${record.category} / ${record.title}\n${record.text}\n` +
       `出典　${record.source}（確認日 ${record.checked}）\n${record.url}`
@@ -35,6 +36,7 @@ function createOfflineSearch({ records, limit, instructions, noEvidence }) {
       mode: "search",
       answer: sources.length ? "" : noEvidence,
       sources,
+      photos: photos.filter((photo) => photo.record_ids.some((id) => sourceIds.has(id))).slice(0, photoLimit),
       prompt: sources.length
         ? `${instructions}\n回答の根拠にした出典のURLを記載してください。\n\n質問\n${question}\n\n検索で見つかった資料\n${sections.join("\n\n")}`
         : "",

@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from yamada_photos import PHOTO_CATALOG, photos_for
 from yamada_rag import DEFAULT_OLLAMA_MODEL, NO_EVIDENCE, format_prompt, load_records, search
 from yamada_react import make_react_decider, run_turn
 
@@ -18,6 +19,7 @@ ASSETS = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/yamada-bay.webp": ("yamada-bay.webp", "image/webp"),
 }
+ASSETS.update({"/" + photo["file"]: (photo["file"], "image/webp") for photo in PHOTO_CATALOG})
 WEB_DIR = Path(__file__).with_name("web")
 QUESTION_LIMIT = 400
 REQUEST_LIMIT = 16_384
@@ -203,6 +205,7 @@ class GuideHandler(BaseHTTPRequestHandler):
             "answer": answer,
             "notice": notice,
             "sources": [public_source(record) for record in hits],
+            "photos": photos_for(hits) if action in ("answer", "search") else [],
             "prompt": prompt,
         }
 

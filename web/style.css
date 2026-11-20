@@ -275,6 +275,31 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 }
 .quiet-button:hover, .sources > summary:hover { border-color: var(--line); background: #2a4c42; }
 .copy-status { color: var(--muted); font-size: .78rem; }
+.answer-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin-top: .88rem;
+}
+.answer-photo {
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: .82rem;
+  background: var(--surface);
+}
+.answer-photo:only-child { grid-column: 1 / -1; max-width: 28rem; }
+.answer-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  background: var(--paper);
+  object-fit: contain;
+}
+.answer-photo figcaption { padding: .48rem .69rem .57rem; line-height: 1.5; }
+.answer-photo figcaption strong { display: block; font-size: .87rem; }
+.answer-photo-meta { display: block; margin-top: .1rem; color: var(--muted); font-size: .73rem; overflow-wrap: anywhere; }
 .sources { margin-top: .72rem; }
 .sources > summary {
   display: flex;
@@ -498,6 +523,10 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .welcome { align-content: start; }
   .place img { aspect-ratio: 3.3; }
 }
+
+@media (max-width: 32rem) {
+  .answer-photos { grid-template-columns: minmax(0, 1fr); }
+}
 @keyframes title-arrive {
   from { opacity: 0; transform: translateY(82%); }
   to { opacity: 1; transform: translateY(0); }
@@ -546,10 +575,12 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .activity-dots > span:nth-child(3) { animation-delay: 240ms; }
   .streaming-answer::after { animation: answer-caret 1.05s ease-in-out infinite; }
   .result-ready:not(.has-streamed) .message-content > *,
+  .result-ready .answer-photos,
   .result-ready .sources,
   .result-ready .message-tools { animation: rise-in 320ms var(--motion-out) both; }
   .result-ready .message-content > :nth-child(2) { animation-delay: 45ms; }
   .result-ready .message-content > :nth-child(n + 3) { animation-delay: 85ms; }
+  .result-ready .answer-photos { animation-delay: 90ms; }
   .result-ready .sources, .result-ready .message-tools { animation-delay: 105ms; }
   .sources > summary::before { transition: transform 200ms var(--motion-out); }
   .sources[open] .sources-list { animation: rise-in 250ms var(--motion-out) both; }

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from yamada_calendars import AmbiguousDistrict, collection_bounds, find_collection_calendar, find_collection_days
 from yamada_rag import load_records, search
-from yamada_react import asks_collection_date, run_turn, stream_grounded_answer
+from yamada_react import asks_collection_date, make_react_decider, run_turn, stream_grounded_answer
 from yamada_web import public_source, read_history
 
 
@@ -27,6 +27,18 @@ class ReactTests(unittest.TestCase):
         receive('{"action":"answer","answer":"300円","sources":["seen"]}')
         receive('{"action":"insufficient","sources":["seen"],"answer":"確認できません"}')
         self.assertEqual(deltas, [])
+
+    def test_stream_schema_limits_source_ids_to_retrieved_records(self):
+        state = {"observations": [
+            {"source_ids": ["museum-fees", "town-iju_osusume-2"]},
+            {"source_ids": ["town-iju_osusume-2", "museum-hours"]},
+        ]}
+        with patch("yamada_react.chat_json") as chat:
+            make_react_decider("gemma4:12b")(state, actions=["answer"], on_content=Mock())
+        properties = chat.call_args.args[3]["properties"]
+        self.assertEqual(list(properties)[:3], ["action", "sources", "answer"])
+        self.assertEqual(properties["sources"]["items"]["enum"],
+                         ["museum-fees", "town-iju_osusume-2", "museum-hours"])
 
     def test_history_resolves_references_but_only_search_results_can_be_cited(self):
         history = read_history([{"question": "科学館の料金は？", "answer": "大人300円です。"}])

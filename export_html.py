@@ -4,11 +4,17 @@ import base64
 import json
 from pathlib import Path
 
+from yamada_photos import PHOTO_CATALOG, PHOTO_LIMIT, photo_details
 from yamada_rag import ANSWER_INSTRUCTIONS, NO_EVIDENCE, SEARCH_LIMIT, load_records
 
 
 FOLDER = Path(__file__).parent
 WEB = FOLDER / "web"
+
+
+def embedded_photo(relative_path):
+    encoded = base64.b64encode((WEB / relative_path).read_bytes()).decode("ascii")
+    return f"data:image/webp;base64,{encoded}"
 
 
 def embedded_data():
@@ -17,6 +23,8 @@ def embedded_data():
         "limit": SEARCH_LIMIT,
         "instructions": ANSWER_INSTRUCTIONS,
         "noEvidence": NO_EVIDENCE,
+        "photos": [photo_details(photo, embedded_photo(photo["file"])) for photo in PHOTO_CATALOG],
+        "photoLimit": PHOTO_LIMIT,
     }, ensure_ascii=False).replace("<", "\\u003c")
 
 
@@ -25,10 +33,8 @@ def main():
     css = (WEB / "style.css").read_text(encoding="utf-8")
     search_script = (WEB / "standalone.js").read_text(encoding="utf-8")
     app_script = (WEB / "app.js").read_text(encoding="utf-8")
-    photo = base64.b64encode((WEB / "yamada-bay.webp").read_bytes()).decode("ascii")
-
     html = html.replace('<link rel="stylesheet" href="/style.css">', f"<style>\n{css}</style>")
-    html = html.replace('src="/yamada-bay.webp"', f'src="data:image/webp;base64,{photo}"')
+    html = html.replace('src="/yamada-bay.webp"', f'src="{embedded_photo("yamada-bay.webp")}"')
     html = html.replace('    <script src="/app.js" defer></script>\n', "")
     html = html.replace("</body>", (
         f'<script type="application/json" id="standalone-data">{embedded_data()}</script>\n'

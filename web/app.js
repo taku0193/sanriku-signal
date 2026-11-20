@@ -237,6 +237,37 @@ function attachSources(row, records, showSources) {
   row.append(sources);
 }
 
+function attachPhotos(row, photos) {
+  if (!photos.length) return;
+  const gallery = element("div", "answer-photos");
+  for (const photo of photos) {
+    const figure = element("figure", "answer-photo");
+    const image = element("img");
+    image.src = photo.src;
+    image.alt = photo.alt;
+    image.width = photo.width;
+    image.height = photo.height;
+    image.loading = "lazy";
+    image.decoding = "async";
+
+    const caption = element("figcaption");
+    const meta = element("span", "answer-photo-meta");
+    const author = element("a", "", photo.author);
+    author.href = photo.page;
+    author.target = "_blank";
+    author.rel = "noopener";
+    const license = element("a", "", photo.license);
+    license.href = photo.license_url;
+    license.target = "_blank";
+    license.rel = "noopener";
+    meta.append(photo.taken + " · ", author, " · ", license, " · 縮小・WebP変換");
+    caption.append(element("strong", "", photo.title), meta);
+    figure.append(image, caption);
+    gallery.append(figure);
+  }
+  row.append(gallery);
+}
+
 function attachCopy(row, text, label) {
   if (!text) return;
   const actions = element("div", "message-tools");
@@ -328,6 +359,7 @@ function displayResult(view, result) {
   if (result.mode === "search" && !result.answer) {
     view.body.append(element("p", "", "質問に関連する資料が見つかりました。"));
   }
+  attachPhotos(view.row, result.photos ?? []);
   attachSources(view.row, result.sources, result.mode === "search");
   if (result.mode === "ai") {
     attachCopy(view.row, result.answer, "回答をコピー");
