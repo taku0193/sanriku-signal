@@ -35,15 +35,29 @@ def read_text(value):
 def read_pending(value):
     if value is None:
         return None
-    if not isinstance(value, dict) or value.keys() != {"question", "field", "prompt"}:
+    required = {"question", "field", "prompt"}
+    if not isinstance(value, dict) or not required <= value.keys() <= required | {"district_hint"}:
         raise ValueError
     if value["field"] != "district":
         raise ValueError
-    return {
+    pending = {
         "question": read_text(value["question"]),
         "field": "district",
         "prompt": read_text(value["prompt"]),
     }
+    if "district_hint" in value:
+        pending["district_hint"] = read_text(value["district_hint"])
+    return pending
+
+
+def public_source(record):
+    fields = ("category", "title", "text", "source", "checked", "published")
+    source = {key: record[key] for key in fields if key in record}
+    if "calendar_answer" in record:
+        source["text"] = ""
+    elif "url" in record:
+        source["url"] = record["url"]
+    return source
 
 
 class GuideHandler(BaseHTTPRequestHandler):
@@ -131,11 +145,7 @@ class GuideHandler(BaseHTTPRequestHandler):
             "pending": next_pending,
             "answer": answer,
             "notice": notice,
-            "sources": [
-                {key: record[key] for key in ("category", "title", "text", "source", "url", "checked", "published")
-                 if key in record}
-                for record in hits
-            ],
+            "sources": [public_source(record) for record in hits],
             "prompt": prompt,
         })
 

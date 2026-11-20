@@ -5,6 +5,7 @@ import json
 import re
 import statistics
 import unicodedata
+from datetime import date
 from pathlib import Path
 from time import perf_counter
 
@@ -48,10 +49,11 @@ def evaluate_case(case, mode, records, decide):
     start = perf_counter()
     if mode == "react":
         expectations = {**case, **case.get("react", {})}
+        as_of = date.fromisoformat(expectations["as_of"]) if "as_of" in expectations else None
 
         def evaluate_turn(question, expected, pending=None):
             actions = []
-            result = run_turn(question, records, decide, pending=pending, on_action=actions.append)
+            result = run_turn(question, records, decide, pending=pending, on_action=actions.append, today=as_of)
             for event in actions:
                 if event["action"] == "search" and event["status"] in {"found", "not_found", "error"}:
                     searches.append(event)

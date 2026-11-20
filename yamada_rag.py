@@ -336,7 +336,9 @@ def main():
         if args.model:
             print(answer)
             for record in citations:
-                print(f"\n出典　{record['title']}（確認日 {record['checked']}）\n{record['url']}")
+                print(f"\n出典　{record['title']}（確認日 {record['checked']}）")
+                if "calendar_answer" not in record:
+                    print(record["url"])
         else:
             hits = search(records, question)
             if args.prompt:

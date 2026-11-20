@@ -338,15 +338,22 @@ function sourceCard(record) {
 
   const metadata = document.createElement("p");
   metadata.className = "source-meta";
-  const link = document.createElement("a");
-  link.href = record.url;
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.textContent = record.source;
+  if (record.url) {
+    const link = document.createElement("a");
+    link.href = record.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = record.source;
+    metadata.append(link);
+  } else {
+    metadata.append(record.source);
+  }
   const published = record.published ? `掲載日 ${record.published} / ` : "";
-  metadata.append(link, `（${published}確認日 ${record.checked}）`);
+  metadata.append(`（${published}確認日 ${record.checked}）`);
 
-  card.append(category, title, excerpt, metadata);
+  card.append(category, title);
+  if (record.text) card.append(excerpt);
+  card.append(metadata);
   return card;
 }
 

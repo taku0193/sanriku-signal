@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.request import ProxyHandler, build_opener
 from zoneinfo import ZoneInfo
 
-from yamada_calendars import find_collection_calendar
+from yamada_calendars import (
+    COLLECTION_PERIODS, COLLECTION_TYPES, AmbiguousDistrict, collection_bounds, find_collection_days,
+)
 from yamada_rag import ANSWER_INSTRUCTIONS, NO_EVIDENCE, chat_json, cited_records, normalize, search
 
 
 MAX_SEARCHES = 2
 MAX_DECISIONS = 3
 TARGETS = ("official_documents", "collection_calendars")
+TYPE_GUIDE = "\n".join(f"  {key} は {label}" for key, label in COLLECTION_TYPES.items())
+NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。"
 INSTRUCTIONS = f"""{ANSWER_INSTRUCTIONS}
 あなたは質問、聞き返しへの返答、検索の観察を読み、次の行動を一つ選びます。
 入力の question は最初に尋ねられたことです。follow_up があれば、聞き返しに対する利用者の返答です。
@@ -26,9 +31,17 @@ observations は、あなたが指定した検索の結果です。回答に必�
   missing_fact にその検索で確認したい項目を短く記録します。
 - 個別地区のごみ収集日や日程表の質問では地区名が必要です。元の質問と返答から地区が分からなければ
   action=clarify、field=district とし、町内の地区名を尋ねる短い質問を answer に入れます。
-  地区が分かれば target=collection_calendars、district に地区名、fiscal_year に西暦の年度を指定します。
-  年度指定がなければ current_fiscal_year を使います。日程表の案内だけが見つかった場合は、
-  PDFで確認するよう案内し、収集日や曜日は推測しません。
+  地区が分かれば target=collection_calendars、district に地区名を指定します。年度の指定があるときだけ
+  fiscal_year に西暦の年度を入れます（令和8年度は2026）。元の質問で指定されたごみの種類を、返答が地区名だけでも引き継ぎます。
+  waste_types は質問された区分のキーの配列です。種類の指定がなければ空配列で全区分を照合します。
+{TYPE_GUIDE}
+  period は通常 next、今日なら today、明日なら tomorrow、日や月などの指定には period、年度全体の一覧なら fiscal_year です。
+  period を指定する場合は、start_date と end_date に西暦の開始日・終了日を YYYY-MM-DD で入れます。
+  一日だけなら end_date は省けます。today と current_fiscal_year を基準に、4月から翌年3月の年度を解釈します。
+  地区に複数の候補があるという観察では、地区名と区番号を合わせて聞くか、目印を尋ねてください。
+  日付の観察があれば action=answer とし、収集日を示す資料IDを sources に入れます。アプリが照合済みの日付を表示します。
+  収集日と別の質問が同時にある場合は、そちらの根拠も探し、other_answer に収集日以外への回答を書きます。
+  日付を確認できる資料がなければ、確認できないと答えます。日程表のURLへの案内は回答に含めません。
 - 回答する場合は action=answer、answer に日本語の回答、sources に根拠に使った資料IDを入れます。
   駅名から施設を特定して閉館時刻を比べるなら、駅と施設の関係を示す資料IDと、比較する双方の時刻を示す資料IDを入れます。
   同じ発信元のページでも、根拠に使った箇所が別々の資料IDならそれぞれ入れます。
@@ -62,8 +75,13 @@ def make_react_decider(model):
                 "missing_fact": {"type": "string"},
                 "district": {"type": "string"},
                 "fiscal_year": {"type": "integer"},
+                "period": {"type": "string", "enum": COLLECTION_PERIODS},
+                "start_date": {"type": "string"},
+                "end_date": {"type": "string"},
+                "waste_types": {"type": "array", "items": {"type": "string", "enum": list(COLLECTION_TYPES)}},
                 "field": {"type": "string", "enum": ["district"]},
                 "answer": {"type": "string"},
+                "other_answer": {"type": "string"},
                 "sources": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["action"],
@@ -78,8 +96,19 @@ def make_react_decider(model):
     return decide
 
 
-def run_turn(question, records, decide, *, pending=None, on_action=None):
-    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+def asks_collection_date(text):
+    text = normalize(text)
+    if re.search(r"収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日", text):
+        return True
+    if re.search(r"申[し込]|予約|受付", text) and re.search(r"(?:何日|いつ|何時)まで", text):
+        return False
+    waste = re.search(r"ごみ|ぺっとぼとる|空き?びん|乾電池|ぷら|[段だん]ぼーる|缶|新聞|紙ぱっく|蛍光[管灯]|水銀", text)
+    timing = re.search(r"今日|明日|次回|次の|何日|何曜日|[0-9]+月|いつ(?!までに)", text)
+    return bool(waste and timing)
+
+
+def run_turn(question, records, decide, *, pending=None, on_action=None, today=None):
+    today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
     fiscal_year = today.year if today.month >= 4 else today.year - 1
     state = {
         "question": pending["question"] if pending else question,
@@ -87,11 +116,24 @@ def run_turn(question, records, decide, *, pending=None, on_action=None):
         "current_fiscal_year": fiscal_year,
         "observations": [],
     }
+    hint = pending.get("district_hint") if pending else None
+    reply = f"{hint}{question}" if hint and re.match(r"^[0-9]+区", normalize(question)) else question
     if pending:
-        state["follow_up"] = {"asked": pending["prompt"], "reply": question}
+        state["follow_up"] = {"asked": pending["prompt"], "reply": reply}
+    wording = (reply, pending["question"]) if pending else (question,)
+    calendar_question = asks_collection_date("\n".join(wording))
+
+    def clarify_district(prompt, district_hint=None):
+        next_pending = {
+            "question": state["question"], "field": "district", "prompt": prompt,
+        }
+        if district_hint:
+            next_pending["district_hint"] = district_hint
+        return TurnResult("clarify", prompt, [], next_pending)
 
     evidence = {}
     previous = {}
+    ambiguity = None
     searches = 0
     for step in range(MAX_DECISIONS):
         actions = ["clarify", "insufficient"]
@@ -120,13 +162,25 @@ def run_turn(question, records, decide, *, pending=None, on_action=None):
                     key = (target, " ".join(normalize(query).split()))
                     lookup = lambda: search(records, query)
             elif target == "collection_calendars":
+                calendar_question = True
                 district = decision.get("district")
-                year = decision.get("fiscal_year", fiscal_year)
-                if isinstance(district, str) and 0 < len(district.strip()) <= 80 and type(year) is int:
+                types = decision.get("waste_types", [])
+                valid_types = isinstance(types, list) and all(
+                    isinstance(key, str) and key in COLLECTION_TYPES for key in types
+                )
+                if isinstance(district, str) and 0 < len(district.strip()) <= 80 and valid_types:
                     district = district.strip()
-                    event.update(district=district, fiscal_year=year)
-                    key = (target, " ".join(normalize(district).split()), year)
-                    lookup = lambda: find_collection_calendar(district, year)
+                    try:
+                        year, start, end = collection_bounds(decision, today)
+                    except (KeyError, TypeError, ValueError, OverflowError):
+                        pass
+                    else:
+                        types = tuple(sorted(set(types)))
+                        event.update(district=district, fiscal_year=year, start_date=start.isoformat(), waste_types=list(types))
+                        if end:
+                            event["end_date"] = end.isoformat()
+                        key = (target, " ".join(normalize(district).split()), year, start, end, types)
+                        lookup = lambda: find_collection_days(district, year, start, end, types, wording=wording)
 
             passages = []
             if lookup is not None:
@@ -137,11 +191,22 @@ def run_turn(question, records, decide, *, pending=None, on_action=None):
                     searches += 1
                     try:
                         passages = lookup()
-                    except (OSError, ValueError):
+                    except AmbiguousDistrict as error:
+                        ambiguity = error
+                        event.update(status="ambiguous", district_candidates=error.choices)
+                    except (OSError, KeyError, TypeError, ValueError):
                         event["status"] = "error"
                     else:
+                        passages = [
+                            {**record, "id": f"{record['id']}-lookup-{searches}"}
+                            if "calendar_answer" in record and record["id"] in evidence
+                            and record["text"] != evidence[record["id"]]["text"] else record
+                            for record in passages
+                        ]
                         previous[key] = passages
                         event["status"] = "found" if passages else "not_found"
+                        if target == "collection_calendars" and passages:
+                            ambiguity = None
                 evidence.update((record["id"], record) for record in passages)
                 event["source_ids"] = [record["id"] for record in passages]
             if on_action:
@@ -160,14 +225,22 @@ def run_turn(question, records, decide, *, pending=None, on_action=None):
         raw_answer = decision.get("answer")
         answer = raw_answer.strip() if isinstance(raw_answer, str) else ""
         sources = cited_records(decision, evidence)
+        if ambiguity:
+            return clarify_district(f"「{ambiguity.name}」には複数の収集区分があります。"
+                                    "区番号や、ごみステーションの目印を教えてください。", ambiguity.name)
         if action == "clarify" and decision.get("field") == "district":
             prompt = answer if 0 < len(answer) <= 400 else "山田町内のどの地区か教えてください。"
-            return TurnResult(action, prompt, [], {
-                "question": state["question"], "field": "district", "prompt": prompt,
-            })
-        if action == "answer" and answer and sources:
-            return TurnResult(action, answer, sources)
-        if action == "insufficient":
+            return clarify_district(prompt, hint)
+        if action == "answer" and sources:
+            dates = [record["calendar_answer"] for record in sources if "calendar_answer" in record]
+            if dates:
+                other_answer = decision.get("other_answer")
+                if isinstance(other_answer, str) and other_answer.strip() and len(dates) < len(sources):
+                    dates.append(other_answer.strip())
+                return TurnResult(action, "\n\n".join(dates), sources)
+            if answer and not calendar_question:
+                return TurnResult(action, answer, sources)
+        if action == "insufficient" and not calendar_question:
             return TurnResult(action, answer or NO_EVIDENCE, sources)
         break
-    return TurnResult("insufficient", NO_EVIDENCE, [])
+    return TurnResult("insufficient", NO_COLLECTION_DATES if calendar_question else NO_EVIDENCE, [])

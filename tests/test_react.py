@@ -1,16 +1,18 @@
 import unittest
+from datetime import date
 from unittest.mock import Mock, patch
 
-from yamada_calendars import find_collection_calendar
+from yamada_calendars import AmbiguousDistrict, collection_bounds, find_collection_calendar, find_collection_days
 from yamada_rag import load_records, search
-from yamada_react import run_turn
+from yamada_react import asks_collection_date, run_turn
+from yamada_web import public_source
 
 
 class ReactTests(unittest.TestCase):
     def test_district_clarification_precedes_search_and_resumes(self):
         events = []
         clarify = Mock(return_value={"action": "clarify", "field": "district", "answer": "どの地区ですか？"})
-        with patch("yamada_react.search") as search_documents, patch("yamada_react.find_collection_calendar") as calendar:
+        with patch("yamada_react.search") as search_documents, patch("yamada_react.find_collection_days") as calendar:
             first = run_turn("うちの地区のごみ収集日は？", [], clarify, on_action=events.append)
             search_documents.assert_not_called()
             calendar.assert_not_called()
@@ -18,13 +20,17 @@ class ReactTests(unittest.TestCase):
         self.assertEqual(events, [{"action": "clarify"}])
 
         continuation = Mock(side_effect=[
-            {"action": "search", "target": "collection_calendars", "district": "大沢地区", "fiscal_year": 2026},
-            {"action": "answer", "answer": "大沢の令和8年度の日程表です。", "sources": ["calendar-2026-osawa"]},
+            {"action": "search", "target": "collection_calendars", "district": "大沢地区", "fiscal_year": 2026,
+             "waste_types": ["burnable"]},
+            {"action": "answer", "answer": "11月22日です。", "sources": ["calendar-2026-osawa"]},
         ])
-        second = run_turn("大沢です。", [], continuation, pending=first.pending)
+        second = run_turn("大沢です。", [], continuation, pending=first.pending, today=date(2026, 11, 20))
         self.assertEqual(second.action, "answer")
         self.assertIsNone(second.pending)
         self.assertEqual(second.sources[0]["id"], "calendar-2026-osawa")
+        self.assertIn("2026年11月21日（土）", second.answer)
+        self.assertNotIn("11月22日", second.answer)
+        self.assertNotIn("url", public_source(second.sources[0]))
         self.assertEqual(continuation.call_args.args[0]["question"], "うちの地区のごみ収集日は？")
         self.assertEqual(continuation.call_args.args[0]["follow_up"]["reply"], "大沢です。")
 
@@ -62,7 +68,7 @@ class ReactTests(unittest.TestCase):
             {"action": "search", "target": "collection_calendars", "district": "大沢"},
             {"action": "insufficient"},
         ])
-        with patch("yamada_react.find_collection_calendar", side_effect=FileNotFoundError):
+        with patch("yamada_react.find_collection_days", side_effect=FileNotFoundError):
             result = run_turn("大沢のごみ収集日は？", [], decide, on_action=events.append)
         self.assertEqual(result.action, "insufficient")
         self.assertEqual(events[0]["status"], "error")
@@ -73,6 +79,79 @@ class ReactTests(unittest.TestCase):
         self.assertEqual(find_collection_calendar("大沢１区", 2026)[0]["id"], "calendar-2026-osawa")
         self.assertEqual(find_collection_calendar("柳沢", 2026), [])
         self.assertEqual(find_collection_calendar("大沢", 2025), [])
+
+    def test_calendar_exact_dates_around_new_year(self):
+        day = date(2027, 1, 2)
+        year, start, end = collection_bounds({"period": "today"}, day)
+        result = find_collection_days("大沢", year, start, end, ["burnable"])[0]
+        self.assertIn("収集予定はありません", result["calendar_answer"])
+        self.assertIn("1月1日〜3日は収集休止", result["calendar_answer"])
+        self.assertEqual(year, 2026)
+
+    def test_calendar_multiple_explicit_collection_days(self):
+        result = find_collection_days("大沢", 2026, date(2026, 12, 1), date(2026, 12, 31), ["plastic"])[0]
+        self.assertIn("12月8日（火）", result["calendar_answer"])
+        self.assertIn("12月25日（金）", result["calendar_answer"])
+        self.assertNotIn("ペットボトル", result["calendar_answer"])
+
+    def test_calendar_outside_collected_year(self):
+        self.assertEqual(find_collection_days("大沢", 2027, date(2027, 4, 2), None, []), [])
+
+    def test_exact_date_without_period_is_respected(self):
+        day = date(2026, 12, 25)
+        self.assertEqual(collection_bounds({"start_date": "2026-12-25"}, date(2026, 11, 20)), (2026, day, day))
+        with self.assertRaises(ValueError):
+            collection_bounds({"period": "today", "start_date": "2026-12-25"}, date(2026, 11, 20))
+
+    def test_ambiguous_location_is_not_narrowed_by_model(self):
+        with self.assertRaises(AmbiguousDistrict):
+            find_collection_days("山田1", 2026, date(2026, 11, 21), None, ["burnable"], wording=("北浜のごみの日",))
+
+    def test_ambiguous_location_keeps_district_for_the_next_turn(self):
+        today = date(2026, 11, 20)
+        first = run_turn("北浜の燃やせるごみの収集日は？", [], Mock(side_effect=[
+            {"action": "search", "target": "collection_calendars", "district": "山田1"},
+            {"action": "clarify", "field": "district"},
+        ]), today=today)
+        self.assertEqual(first.pending["district_hint"], "北浜")
+        second = run_turn("9区です", [], Mock(side_effect=[
+            {"action": "search", "target": "collection_calendars", "district": "北浜9区", "waste_types": ["burnable"]},
+            {"action": "answer", "sources": ["calendar-2026-yamada-4-1"]},
+        ]), pending=first.pending, today=today)
+        self.assertIn("11月23日（月）", second.answer)
+
+    def test_verified_station_landmark_can_resolve_a_split_area(self):
+        result = find_collection_days(
+            "北浜2区", 2026, date(2026, 11, 21), None, ["burnable"], wording=("元藤原鉄筋の近くです",),
+        )
+        self.assertEqual(result[0]["id"], "calendar-2026-yamada-5-1")
+
+    def test_collection_date_intent_distinguishes_reservation_and_disposal(self):
+        self.assertFalse(asks_collection_date("粗大ごみの申し込みは何日までですか？"))
+        for question in ("大沢で新聞を出せるのはいつ？", "大沢のプラはいつ？", "大沢の次の缶はいつ？"):
+            self.assertTrue(asks_collection_date(question), question)
+
+    def test_mixed_question_keeps_both_grounded_answers(self):
+        records = load_records(include_imported=False)
+        decide = Mock(side_effect=[
+            {"action": "search", "target": "collection_calendars", "district": "大沢", "waste_types": ["burnable"]},
+            {"action": "search", "target": "official_documents", "query": "鯨と海の科学館 大人 入館料"},
+            {"action": "answer", "other_answer": "科学館の大人料金は300円です。",
+             "sources": ["calendar-2026-osawa", "museum-fees"]},
+        ])
+        result = run_turn("大沢の燃やせるごみの収集日と科学館の料金は？", records, decide, today=date(2026, 11, 20))
+        self.assertIn("11月21日（土）", result.answer)
+        self.assertIn("300円", result.answer)
+
+    def test_legacy_calendar_link_is_not_used_to_answer_dates(self):
+        decide = Mock(side_effect=[
+            {"action": "search", "target": "official_documents", "query": "ごみ収集日"},
+            {"action": "answer", "answer": "PDFで確認してください。", "sources": ["collection-calendar"]},
+        ])
+        result = run_turn("大沢の燃やせるごみの収集日は？", load_records(include_imported=False), decide)
+        self.assertEqual(result.action, "insufficient")
+        self.assertEqual(result.sources, [])
+        self.assertNotIn("PDF", result.answer)
 
     def test_markdown_and_json_use_the_same_search(self):
         records = load_records(include_imported=False)
