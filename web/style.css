@@ -274,22 +274,24 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .activity-wave {
   position: relative;
   flex: none;
-  width: 32px;
+  width: 38px;
   height: 26px;
-  transform-origin: center 85%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: linear-gradient(145deg, #efdbb7, #c9aa7e);
 }
-.activity-wave::before, .activity-wave::after {
+.activity-wave > span { position: absolute; inset: -5px; }
+.activity-wave > span::before, .activity-wave > span::after {
   content: "";
   position: absolute;
   inset: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 20%, 0 90%);
+  clip-path: path("M0 0 H48 V7 C43 7 40 12 35 13 C29 15 26 12 21 15 C16 18 16 22 11 25 C8 27 3 27 0 31 Z");
 }
-.activity-wave::before {
-  background: var(--teal);
-  clip-path: path("M1 20 C5 19.8 8 17.3 10.5 12.2 C14.5 4.4 20 1.9 25.2 4 C29.3 5.5 31.7 9.2 30.2 13.3 C28.1 10.9 25.2 10.6 23 11.8 C20.2 13.2 20 16.3 22.6 18.1 C24.6 19.7 28.1 20.1 31 18.5 L31 22.7 C27.5 24.4 24.6 23.6 21.5 22.6 C18.5 21.7 16.6 22 13.8 23 C10.9 24 8.3 23.6 6 22.8 C3.9 22.1 2.4 22.3 1 22.8 Z");
-}
-.activity-wave::after {
-  background: #def6eb;
-  clip-path: path("M10.5 12.2 C14.5 4.4 20 1.9 25.2 4 C29.3 5.5 31.7 9.2 30.2 13.3 C29.2 12.1 27.9 11.4 26.8 11.1 C27.2 9.3 26.2 8.3 24.8 8.1 C23.4 8 22.4 8.8 21.6 9.6 C21.1 7.8 19.4 7.7 18.4 8.4 C16.9 9.5 16.3 12 13.9 12.8 C12.7 13.3 11.2 12.9 10.5 12.2 Z");
+.activity-wave > span::before { background: #e3faf0; }
+.activity-wave > span::after {
+  transform: translate(-2.5px, -1.8px);
+  background: linear-gradient(148deg, #226e75 15%, #5bb9ad 58%, #a2ddc6 90%);
 }
 
 .message-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin-top: .55rem; }
@@ -560,9 +562,9 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes wave-swell {
-  0%, 100% { transform: translateY(1px) scaleY(.93); }
-  50% { transform: translateY(-1px) scaleY(1.05); }
+@keyframes wave-shore {
+  0%, 100% { transform: translate(-2px, -2px); }
+  45% { transform: translate(3px, 2px); }
 }
 
 @keyframes answer-caret {
@@ -590,7 +592,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .example:active { transform: translateY(1px); }
   .user-message { animation: rise-in 275ms var(--motion-out) both; }
   .guide-message { animation: rise-in 295ms var(--motion-out) 65ms both; }
-  .activity-wave { animation: wave-swell 1.55s ease-in-out infinite; }
+  .activity-wave > span { animation: wave-shore 2.35s ease-in-out infinite; }
   .progress-caption { --rise-distance: 4px; animation: rise-in 180ms ease-out both; }
   .streaming-answer::after { animation: answer-caret 1.05s ease-in-out infinite; }
   .result-ready:not(.has-streamed) .message-content > *,

@@ -87,7 +87,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
             ) : (
               <>
                 <p className="message-status">
-                  <span className="activity-wave" aria-hidden="true" />
+                  <span className="activity-wave" aria-hidden="true"><span /></span>
                   <span key={progressLabel} className="progress-caption">{progressLabel}</span>
                 </p>
                 <p className="streaming-answer" aria-hidden="true" hidden={!turn.preview}>{turn.preview}</p>
