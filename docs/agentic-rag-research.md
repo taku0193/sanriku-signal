@@ -159,6 +159,8 @@ Chromeでキーボードと390ピクセル幅でのタップを使って表示�
 
 ホームでは動画をブラウザーの表示領域いっぱいに敷き、下部にニックネームと案内へ進むボタンをまとめた。背景をタップするとタイトルとロゴがフェードアウトする。ChromeのPC幅と390ピクセル幅で、動画が画面の端まで届き、文字を隠しても入力してチャットへ進めることを確認した。単体HTMLでも同じ動作を確認した。 [CSSのビューポート単位](https://www.w3.org/TR/css-values-4/#viewport-relative-lengths)
 
+ホームの動画を、提供された `sanriku.mp4` に差し替えた。元の画角と10秒の映像を保ち、配信用に音声を外して約4.2 MBに圧縮した。読み込み前や動きを減らす設定で使う静止画は、この動画の先頭フレームから作った。単体HTMLにも同じ動画と静止画を収録した。
+
 ## WebバックエンドのTypeScript化
 
 Node.jsのHTTPサーバーに、資料検索、地区別日程表、ReAct、回答のストリーミングを移した。Reactとサーバーは質問・回答・出典の型を共有し、単体HTMLとサーバーは基本資料のキーワード照合を共有する。ReActの指示はMarkdownに移し、Pythonの比較用CLIからも同じ文面を読む。 [Node.jsのHTTP API](https://nodejs.org/api/http.html) · [Ollamaの構造化出力](https://docs.ollama.com/capabilities/structured-outputs)
