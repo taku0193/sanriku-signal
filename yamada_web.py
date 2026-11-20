@@ -61,9 +61,11 @@ def public_source(record):
 
 
 class GuideHandler(BaseHTTPRequestHandler):
-    def __init__(self, *args, records, decide, **kwargs):
+    def __init__(self, *args, records, decide, retriever=None, retrieval_mode="keyword", **kwargs):
         self.records = records
         self.decide = decide
+        self.retriever = retriever
+        self.retrieval_mode = retrieval_mode
         super().__init__(*args, **kwargs)
 
     def send_content(self, status, content_type, data):
@@ -82,7 +84,7 @@ class GuideHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/api/settings":
-            return self.send_json(200, {"ai": self.decide is not None})
+            return self.send_json(200, {"ai": self.decide is not None, "retrieval": self.retrieval_mode})
 
         asset = ASSETS.get(path)
         if asset is None:
@@ -124,7 +126,7 @@ class GuideHandler(BaseHTTPRequestHandler):
         next_pending = None
         if self.decide is not None:
             try:
-                result = run_turn(question, self.records, self.decide, pending=pending)
+                result = run_turn(question, self.records, self.decide, pending=pending, retriever=self.retriever)
                 mode = "ai"
                 action, answer, hits, next_pending = result.action, result.answer, result.sources, result.pending
             except RuntimeError:
@@ -135,7 +137,7 @@ class GuideHandler(BaseHTTPRequestHandler):
 
         if mode == "search":
             search_query = f"{pending['question']}\n{question}" if pending else question
-            hits = search(self.records, search_query)
+            hits = search(self.records, search_query) if self.retriever is None else self.retriever(search_query).records
             answer = "" if hits else NO_EVIDENCE
             prompt = format_prompt(search_query, hits) if hits else ""
 
@@ -153,14 +155,20 @@ class GuideHandler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description="山田町の観光・くらし案内をローカルで表示します。")
     parser.add_argument("--port", type=int, default=8765, help="ポート番号（既定は8765）")
+    parser.add_argument("--retrieval", choices=("keyword", "hybrid"), default="keyword", help="一般資料の検索方式です。")
     parser.add_argument(
         "--model", nargs="?", const=DEFAULT_OLLAMA_MODEL,
         help=f"Ollamaで回答します。モデル名を省略すると {DEFAULT_OLLAMA_MODEL} を使います。",
     )
     args = parser.parse_args()
     records = load_records()
+    retriever = None
+    if args.retrieval == "hybrid":
+        from yamada_embeddings import make_retriever
+
+        retriever = make_retriever(records, mode=args.retrieval)
     decide = make_react_decider(args.model) if args.model else None
-    handler = partial(GuideHandler, records=records, decide=decide)
+    handler = partial(GuideHandler, records=records, decide=decide, retriever=retriever, retrieval_mode=args.retrieval)
 
     try:
         with ThreadingHTTPServer(("127.0.0.1", args.port), handler) as server:

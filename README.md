@@ -60,6 +60,21 @@ python3 -B evaluate_rag.py --mode react --output evaluation-results.json
 
 質問と判定条件は [`evaluation/questions.json`](evaluation/questions.json) にあります。自動判定では回答に必要な語句・数値、資料ID・URL、ReActの行動を確認します。文全体で意味が合っているかは実際の回答も読みます。終了コードは全件合格が `0`、要確認の回答がある場合が `1`、実行エラーが `2` です。Ollamaを使わずに回数上限や出典の照合を試すには `python3 -B -m unittest discover -s tests` を実行します。
 
+## 言い換えに対応する検索を試す
+
+一般資料のキーワード検索に、EmbeddingGemmaによる意味の近さを使った検索を組み合わせられます。ローカルOllamaを起動し、このフォルダで以下を実行します。索引の初回作成には数分かかります。 [Ollamaの埋め込みAPI](https://docs.ollama.com/api/embed) · [EmbeddingGemma 2](https://ollama.com/library/embeddinggemma-2:270m)
+
+```bash
+ollama pull embeddinggemma-2:270m
+python3 -B -m yamada_embeddings
+python3 -B evaluate_retrieval.py --mode keyword --mode semantic --mode hybrid --output retrieval-results.json
+python3 -B yamada_web.py --model --retrieval hybrid
+```
+
+`evaluate_retrieval.py` は、正式名、言い換え、複数資料が必要な19問で、必要な根拠が上位3件に入ったかを測ります。回答生成も比較するには `evaluate_rag.py --mode react --retrieval hybrid` を実行します。検索方式の既定値はキーワードです。WebとCLIでは `--retrieval hybrid` で切り替え、ごみ収集日は専用の日付照合を使います。
+
+索引の `embeddings-cache.json` は資料から再生成するローカルファイルです。資料を更新したら `python3 -B -m yamada_embeddings` で差分を反映します。索引や埋め込みサーバーを利用できないときはキーワード検索に切り替わります。埋め込み用Ollamaの接続先を変える場合は `YAMADA_EMBED_URL`、モデル名を変える場合は `YAMADA_EMBED_MODEL` を設定します。設定変更後は同じ設定で索引を生成してアプリを起動します。
+
 ## 資料を増やすとき
 
 山田町公式サイトの記事一覧と、山田町観光協会の名所・施設・宿泊の一覧などから、本文・見出し・出典URL・取得日と、取得できる場合は掲載日を保存します。初回と資料を更新したいときに、このフォルダで実行します。町の記事の確認には数分かかります。 [山田町の記事一覧](https://www.town.yamada.iwate.jp/docs/) · [山田町観光協会](https://www.yamada-kankou.jp/)

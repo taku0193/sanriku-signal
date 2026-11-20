@@ -107,7 +107,7 @@ def asks_collection_date(text):
     return bool(waste and timing)
 
 
-def run_turn(question, records, decide, *, pending=None, on_action=None, today=None):
+def run_turn(question, records, decide, *, pending=None, on_action=None, today=None, retriever=None):
     today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
     fiscal_year = today.year if today.month >= 4 else today.year - 1
     state = {
@@ -130,6 +130,12 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
         if district_hint:
             next_pending["district_hint"] = district_hint
         return TurnResult("clarify", prompt, [], next_pending)
+
+    def find_documents(query):
+        if retriever is None:
+            return search(records, query), "keyword"
+        result = retriever(query)
+        return result.records, result.mode
 
     evidence = {}
     previous = {}
@@ -160,7 +166,7 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
                     query = query.strip()
                     event["query"] = query
                     key = (target, " ".join(normalize(query).split()))
-                    lookup = lambda: search(records, query)
+                    lookup = lambda: find_documents(query)
             elif target == "collection_calendars":
                 calendar_question = True
                 district = decision.get("district")
@@ -180,17 +186,18 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
                         if end:
                             event["end_date"] = end.isoformat()
                         key = (target, " ".join(normalize(district).split()), year, start, end, types)
-                        lookup = lambda: find_collection_days(district, year, start, end, types, wording=wording)
+                        lookup = lambda: (find_collection_days(district, year, start, end, types, wording=wording), None)
 
             passages = []
+            retrieval = None
             if lookup is not None:
                 if key in previous:
-                    passages = previous[key]
+                    passages, retrieval = previous[key]
                     event["status"] = "reused"
                 else:
                     searches += 1
                     try:
-                        passages = lookup()
+                        passages, retrieval = lookup()
                     except AmbiguousDistrict as error:
                         ambiguity = error
                         event.update(status="ambiguous", district_candidates=error.choices)
@@ -203,12 +210,14 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
                             and record["text"] != evidence[record["id"]]["text"] else record
                             for record in passages
                         ]
-                        previous[key] = passages
+                        previous[key] = (passages, retrieval)
                         event["status"] = "found" if passages else "not_found"
                         if target == "collection_calendars" and passages:
                             ambiguity = None
                 evidence.update((record["id"], record) for record in passages)
                 event["source_ids"] = [record["id"] for record in passages]
+                if retrieval:
+                    event["retrieval"] = retrieval
             if on_action:
                 on_action(event)
             fields = ("id", "title", "text", "source", "checked", "published")

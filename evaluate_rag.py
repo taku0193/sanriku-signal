@@ -39,12 +39,12 @@ def check_answer(case, answer, citations):
     }
 
 
-def evaluate_case(case, mode, records, decide):
+def evaluate_case(case, mode, records, decide, *, retriever=None):
     searches = []
     turns = []
 
-    def record_search(query, source_ids):
-        searches.append({"query": query, "source_ids": list(source_ids)})
+    def record_search(query, source_ids, retrieval):
+        searches.append({"query": query, "source_ids": list(source_ids), "retrieval": retrieval})
 
     start = perf_counter()
     if mode == "react":
@@ -53,7 +53,9 @@ def evaluate_case(case, mode, records, decide):
 
         def evaluate_turn(question, expected, pending=None):
             actions = []
-            result = run_turn(question, records, decide, pending=pending, on_action=actions.append, today=as_of)
+            result = run_turn(
+                question, records, decide, pending=pending, on_action=actions.append, today=as_of, retriever=retriever,
+            )
             for event in actions:
                 if event["action"] == "search" and event["status"] in {"found", "not_found", "error"}:
                     searches.append(event)
@@ -83,6 +85,7 @@ def evaluate_case(case, mode, records, decide):
         expectations = case
         answer, citations = answer_question(
             case["question"], records, decide, baseline=mode == "baseline", on_search=record_search,
+            retriever=retriever,
         )
         checks = check_answer(case, answer, citations)
     elapsed = round(perf_counter() - start, 3)
@@ -96,6 +99,7 @@ def evaluate_case(case, mode, records, decide):
         "answer": answer,
         "citations": [{"id": record["id"], "url": record["url"]} for record in citations],
         "searches": searches,
+        "retrieval_fallbacks": sum(event.get("retrieval") == "keyword_fallback" for event in searches),
         **({"turns": turns} if turns else {}),
         "elapsed_seconds": elapsed,
         **checks,
@@ -110,8 +114,13 @@ def summarize(results):
             continue
         passed = sum(row["passed"] for row in rows)
         median = statistics.median(row["elapsed_seconds"] for row in rows)
-        summary[mode] = {"passed": passed, "total": len(rows), "median_seconds": round(median, 3)}
+        fallback = sum(row["retrieval_fallbacks"] for row in rows)
+        summary[mode] = {
+            "passed": passed, "total": len(rows), "median_seconds": round(median, 3), "retrieval_fallbacks": fallback,
+        }
         print(f"{label}　{passed}/{len(rows)}件合格　応答時間の中央値 {median:.2f}秒")
+        if fallback:
+            print(f"{label}　埋め込みを利用できず、キーワード検索に切り替わった検索が {fallback} 回ありました。")
     return summary
 
 
@@ -120,6 +129,7 @@ def main():
     parser.add_argument("--model", default=DEFAULT_OLLAMA_MODEL, help=f"Ollamaのモデル名（既定は {DEFAULT_OLLAMA_MODEL}）")
     parser.add_argument("--case", action="append", metavar="ID", help="指定した質問だけを評価します。複数指定できます。")
     parser.add_argument("--mode", action="append", choices=MODES, help="評価方式です。省略時は初回検索のみと旧追加検索を比較します。")
+    parser.add_argument("--retrieval", choices=("keyword", "hybrid"), default="keyword", help="一般資料の検索方式です。")
     parser.add_argument("--output", type=Path, metavar="FILE", help="回答・出典・検索履歴を含む結果JSONを保存します。")
     args = parser.parse_args()
 
@@ -135,6 +145,11 @@ def main():
             cases = [by_id[case_id] for case_id in dict.fromkeys(args.case)]
 
         records = load_records()
+        retriever = None
+        if args.retrieval == "hybrid":
+            from yamada_embeddings import make_retriever
+
+            retriever = make_retriever(records, mode=args.retrieval)
         modes = tuple(dict.fromkeys(args.mode or ("baseline", "agentic")))
         react = make_react_decider(args.model) if "react" in modes else None
         legacy = make_ollama_decider(args.model, catalog=records)
@@ -148,7 +163,7 @@ def main():
         for case in cases:
             for mode in modes:
                 label = MODES[mode]
-                row = evaluate_case(case, mode, records, react if mode == "react" else legacy)
+                row = evaluate_case(case, mode, records, react if mode == "react" else legacy, retriever=retriever)
                 results.append(row)
                 status = "合格" if row["passed"] else "要確認"
                 answer_status = "○" if row["answer_passed"] else "×"
@@ -161,11 +176,13 @@ def main():
 
         summary = summarize(results)
         if args.output:
-            report = {"model": args.model, "summary": summary, "results": results}
+            report = {"model": args.model, "retrieval": args.retrieval, "summary": summary, "results": results}
             args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, RuntimeError, ValueError, KeyError, TypeError, re.error) as error:
         parser.exit(2, f"評価を実行できませんでした。 {error}\n")
 
+    if args.retrieval == "hybrid" and any(row["retrieval_fallbacks"] for row in results):
+        return 2
     return int(any(not row["passed"] for row in results))
 
 

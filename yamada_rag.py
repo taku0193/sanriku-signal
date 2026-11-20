@@ -261,14 +261,19 @@ def make_ollama_decider(model, *, catalog=()):
     return decide
 
 
-def answer_question(question, records, decide, *, baseline=False, trace=False, on_search=None):
+def answer_question(question, records, decide, *, baseline=False, trace=False, on_search=None, retriever=None):
     def retrieve(query):
-        hits = search(records, query)
+        mode = "keyword"
+        if retriever is None:
+            hits = search(records, query)
+        else:
+            result = retriever(query)
+            hits, mode = result.records, result.mode
         ids = tuple(record["id"] for record in hits)
         if trace:
-            print(f"検索 {query!r} → {', '.join(ids) or '該当なし'}", file=sys.stderr)
+            print(f"検索 {query!r} ({mode}) → {', '.join(ids) or '該当なし'}", file=sys.stderr)
         if on_search is not None:
-            on_search(query, ids)
+            on_search(query, ids, mode)
         return hits
 
     evidence = {record["id"]: record for record in retrieve(question)}
@@ -309,6 +314,7 @@ def main():
     )
     parser.add_argument("--baseline", action="store_true", help="初回検索だけで回答します（--model 用）。")
     parser.add_argument("--trace", action="store_true", help="AIモードで行動と検索結果を表示します。")
+    parser.add_argument("--retrieval", choices=("keyword", "hybrid"), default="keyword", help="一般資料の検索方式です。")
     args = parser.parse_args()
     question = args.question.strip()
     if not question:
@@ -318,10 +324,15 @@ def main():
 
     try:
         records = load_records()
+        retriever = None
+        if args.retrieval == "hybrid":
+            from yamada_embeddings import make_retriever
+
+            retriever = make_retriever(records, mode=args.retrieval)
         if args.model and args.baseline:
             answer, citations = answer_question(
                 question, records, make_ollama_decider(args.model, catalog=records),
-                baseline=True, trace=args.trace,
+                baseline=True, trace=args.trace, retriever=retriever,
             )
         elif args.model:
             from yamada_react import make_react_decider, run_turn
@@ -331,6 +342,7 @@ def main():
 
             result = run_turn(
                 question, records, make_react_decider(args.model), on_action=trace_action if args.trace else None,
+                retriever=retriever,
             )
             answer, citations = result.answer, result.sources
         if args.model:
@@ -340,7 +352,7 @@ def main():
                 if "calendar_answer" not in record:
                     print(record["url"])
         else:
-            hits = search(records, question)
+            hits = search(records, question) if retriever is None else retriever(question).records
             if args.prompt:
                 print(format_prompt(question, hits))
             elif hits:
