@@ -172,3 +172,5 @@ Node.jsのHTTPサーバーに、資料検索、地区別日程表、ReAct、回�
 ## チャットの進捗を示す波
 
 検索や生成の進捗の横に、三陸の海をイメージした二本の波を表示する。CSSの放射グラデーションに同じ幅で繰り返す曲線を描き、それぞれ異なる速さで流す。端末で動きを減らす設定を使っている場合は静止した波を表示する。Chromeの390ピクセル幅で、質問中の波の動きと、回答が届いたときに表示が消えることを確認した。 [CSSの放射グラデーション](https://www.w3.org/TR/css-images-3/#radial-gradients) · [動きを減らす設定](https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion)
+
+小さな表示でも波の形が伝わるよう、巻き上がる青緑の波と白い波頭に描き直した。CSSの `clip-path` で二色の輪郭を描き、波が寄せるようにゆっくり上下させる。Chromeのスマートフォン幅でアニメーションと静止表示を確認した。 [CSSの切り抜きパス](https://www.w3.org/TR/css-masking-1/#the-clip-path)
