@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": ".runtime/typescript",
+    "noEmit": false,
+    "noEmitOnError": true
+  },
+  "include": ["server/**/*.ts", "tests/server.test.ts"]
+}

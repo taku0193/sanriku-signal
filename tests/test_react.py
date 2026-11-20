@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 from yamada_calendars import AmbiguousDistrict, collection_bounds, find_collection_calendar, find_collection_days
 from yamada_rag import load_records, search
 from yamada_react import asks_collection_date, make_react_decider, run_turn, stream_grounded_answer
-from yamada_web import public_source, read_history
 
 
 class ReactTests(unittest.TestCase):
@@ -41,7 +40,7 @@ class ReactTests(unittest.TestCase):
                          ["museum-fees", "town-iju_osusume-2", "museum-hours"])
 
     def test_history_resolves_references_but_only_search_results_can_be_cited(self):
-        history = read_history([{"question": "科学館の料金は？", "answer": "大人300円です。"}])
+        history = [{"question": "科学館の料金は？", "answer": "大人300円です。"}]
         events = []
         states = []
 
@@ -86,7 +85,6 @@ class ReactTests(unittest.TestCase):
         self.assertEqual(second.sources[0]["id"], "calendar-2026-osawa")
         self.assertIn("2026年11月21日（土）", second.answer)
         self.assertNotIn("11月22日", second.answer)
-        self.assertNotIn("url", public_source(second.sources[0]))
         self.assertEqual(continuation.call_args.args[0]["question"], "うちの地区のごみ収集日は？")
         self.assertEqual(continuation.call_args.args[0]["follow_up"]["reply"], "大沢です。")
 

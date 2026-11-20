@@ -10,9 +10,9 @@
 
 手元に保存した `yamada-guide.html` をブラウザーで開きます。サーバーの起動は不要です。質問を入力するか、観光・くらしの質問例を選ぶと、資料の要約と出典リンクが表示されます。「質問と資料をコピー」で、質問と根拠をまとめてチャットに渡せます。資料を更新した後は `python3 -B export_html.py` でHTMLを作り直せます。
 
-単体HTMLには基本資料を収録しています。町や観光協会の公開記事も利用するには、下の手順で資料を取り込み、サーバー版を起動します。資料検索だけなら `python3 -B yamada_web.py`、AIの回答も使うなら `python3 -B yamada_web.py --model` を実行します。
+単体HTMLには基本資料を収録しています。町や観光協会の公開記事も利用するには、下の手順で資料を取り込み、サーバー版を起動します。初回は `npm ci` と `npm run build` を実行します。資料検索は `npm start`、AIの回答を使う場合は `npm start -- --model` で起動します。
 
-Gemma 4 12Bで自動回答を使う場合は、下の手順3でOllamaを用意します。その後、ブラウザーと同じ端末で `python3 -B yamada_web.py --model` を実行し、[http://127.0.0.1:8765](http://127.0.0.1:8765/) を開きます。AIとの接続に失敗した場合は、同じ画面に資料検索の結果を表示します。停止するときはターミナルで `Ctrl+C` を押します。
+Gemma 4 12Bで自動回答を使う場合は、下の手順3でOllamaを用意します。`npm start -- --model` を実行し、[http://127.0.0.1:8765](http://127.0.0.1:8765/) を開きます。AIとの接続に失敗した場合は、同じ画面に資料検索の結果を表示します。停止するときはターミナルで `Ctrl+C` を押します。
 
 AI回答モードでは検索や確認の進み具合が会話欄に表示されます。「鯨と海の科学館の入館料は？」に続けて「そこは何時まで？」と質問できます。根拠を確認するには回答の下にある「出典」を開きます。会話の文脈は開いているページ内で使い、「新しい会話」でリセットします。
 
@@ -22,9 +22,9 @@ AI回答モードでは検索や確認の進み具合が会話欄に表示され
 
 「うちの地区の次の燃やせるごみの日は？」と質問し、地区名を聞かれたら「大沢です」と入力します。回答に、収集予定の日付と曜日が表示されます。「大沢の2026年12月のプラスチック収集日」のように期間と種類を指定することもできます。
 
-## フロントエンドを開発する
+## Web版を開発する
 
-`frontend/` がReactとTypeScriptのソースです。画面と会話の操作は `App.tsx`、発言・写真・出典は `ChatTurn.tsx`、APIの受信は `api.ts` にあります。画面を変更したら、Node.js 22.12以降の環境で次を実行します。
+`frontend/` にReactの画面、`server/` に検索・ReAct・HTTP API、`shared/` にブラウザーとサーバーの共通検索処理があります。Web版はTypeScriptで実装しています。Node.js 22.12以降の環境で次を実行します。
 
 ```bash
 npm ci
@@ -32,7 +32,7 @@ npm run build
 python3 -B export_html.py
 ```
 
-`npm run build` は型をチェックし、Pythonサーバーが配信する `web/app.js` を作ります。単体HTMLにも同じビルドを埋め込みます。
+`npm run build` は型をチェックして、画面の `web/app.js` とNode.js用のサーバーを生成します。単体HTMLにも同じ画面のビルドを埋め込みます。資料の収集・索引の生成・単体HTMLの書き出しはPythonのスクリプトで行います。以前の `python3 -B yamada_web.py` も、ビルド済みのNode.jsサーバーを起動します。
 
 ## 1. まず資料を検索する
 
@@ -70,7 +70,7 @@ python3 yamada_rag.py --model --trace --baseline '岩手船越駅が最寄りの
 
 ## 4. 回答と出典をまとめて評価する
 
-Ollamaを起動した状態で次のコマンドを実行すると、既定のGemma 4 12Bで観光・くらしの10問を試せます。全件の実行には数分かかることがあります。
+Ollamaを起動した状態でPythonの比較用CLIを実行すると、既定のGemma 4 12Bで観光・くらしの13問を試せます。全件の実行には数分かかることがあります。
 
 ```bash
 python3 -B evaluate_rag.py --mode react --output evaluation-results.json
@@ -78,7 +78,7 @@ python3 -B evaluate_rag.py --mode react --output evaluation-results.json
 
 結果JSONには、実際の回答と出典、検索条件と取得した資料ID、応答時間が入ります。ReActの評価ではターンごとの行動も確認できます。大沢の日程表の例だけ試すには `--case collection-district-unknown` を追加します。`--mode` を省略すると、初回検索のみと旧版の追加検索ありを比較します。
 
-質問と判定条件は [`evaluation/questions.json`](evaluation/questions.json) にあります。自動判定では回答に必要な語句・数値、資料ID・URL、ReActの行動を確認します。文全体で意味が合っているかは実際の回答も読みます。終了コードは全件合格が `0`、要確認の回答がある場合が `1`、実行エラーが `2` です。Ollamaを使わずに回数上限や出典の照合を試すには `python3 -B -m unittest discover -s tests` を実行します。
+質問と判定条件は [`evaluation/questions.json`](evaluation/questions.json) にあります。自動判定では回答に必要な語句・数値、資料ID・URL、ReActの行動を確認します。文全体で意味が合っているかは実際の回答も読みます。終了コードは全件合格が `0`、要確認の回答がある場合が `1`、実行エラーが `2` です。TypeScript版の検索上限、出典照合、HTTPでのストリーミングなどは、Ollamaを使わず `npm run test:server` で試せます。
 
 ## 言い換えに対応する検索を試す
 
@@ -88,7 +88,7 @@ python3 -B evaluate_rag.py --mode react --output evaluation-results.json
 ollama pull embeddinggemma-2:270m
 python3 -B -m yamada_embeddings
 python3 -B evaluate_retrieval.py --mode keyword --mode semantic --mode hybrid --output retrieval-results.json
-python3 -B yamada_web.py --model --retrieval hybrid
+npm start -- --model --retrieval hybrid
 ```
 
 `evaluate_retrieval.py` は、正式名、言い換え、複数資料が必要な19問で、必要な根拠が上位3件に入ったかを測ります。回答生成も比較するには `evaluate_rag.py --mode react --retrieval hybrid` を実行します。検索方式の既定値はキーワードです。WebとCLIでは `--retrieval hybrid` で切り替え、ごみ収集日は専用の日付照合を使います。

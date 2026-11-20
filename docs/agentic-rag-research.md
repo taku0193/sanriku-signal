@@ -158,3 +158,11 @@ Chromeでキーボードと390ピクセル幅でのタップを使って表示�
 背景動画の上にあった説明と操作ボタンを取り除き、背景そのものをタップまたはキーボードで操作する形にした。キーボードで背景にフォーカスしたときは枠を表示する。動きを減らす設定では静止画を使い、文字は即時に切り替える。 [W3Cのボタン操作](https://www.w3.org/WAI/ARIA/apg/patterns/button/) · [動きを減らす設定](https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion)
 
 ホームでは動画をブラウザーの表示領域いっぱいに敷き、下部にニックネームと案内へ進むボタンをまとめた。背景をタップするとタイトルとロゴがフェードアウトする。ChromeのPC幅と390ピクセル幅で、動画が画面の端まで届き、文字を隠しても入力してチャットへ進めることを確認した。単体HTMLでも同じ動作を確認した。 [CSSのビューポート単位](https://www.w3.org/TR/css-values-4/#viewport-relative-lengths)
+
+## WebバックエンドのTypeScript化
+
+Node.jsのHTTPサーバーに、資料検索、地区別日程表、ReAct、回答のストリーミングを移した。Reactとサーバーは質問・回答・出典の型を共有し、単体HTMLとサーバーは基本資料のキーワード照合を共有する。ReActの指示はMarkdownに移し、Pythonの比較用CLIからも同じ文面を読む。 [Node.jsのHTTP API](https://nodejs.org/api/http.html) · [Ollamaの構造化出力](https://docs.ollama.com/capabilities/structured-outputs)
+
+移行では、検索と回答生成を別に検証した。埋め込み索引は資料のハッシュとモデルの識別情報を照合して読み込むため、既存の9,237件の索引を再利用できた。Gemmaに渡す出典の候補は今回の検索結果に限り、取得済みのIDを確認してから本文を流す。収集日は日程表のデータから表示する。資料の取り込み、埋め込み索引の生成、比較用CLIはPythonで実行する。 [Ollamaの埋め込みAPI](https://docs.ollama.com/api/embed)
+
+19問で上位資料IDと順序を比較したところ、キーワード検索・併用検索ともに旧版と全件一致した。必要な根拠がそろった質問は両版ともキーワード12問、併用18問だった。GPU版Gemma 4 12Bの回答評価も両版で13問すべて合格した。各質問1回の計測では回答時間の中央値がPython版1.92秒、TypeScript版1.72秒だった。HTTPのテストでは動画の範囲配信、出典付きのストリーミング、Ollamaを使えない場合の資料検索も確認した。
