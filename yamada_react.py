@@ -1,5 +1,7 @@
 """Gemmaが行動を選び、検索結果を観察して次の行動を決める。"""
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from datetime import datetime

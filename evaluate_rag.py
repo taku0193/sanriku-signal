@@ -137,7 +137,10 @@ def main():
         react = make_react_decider(args.model) if "react" in modes else None
         legacy = make_ollama_decider(args.model, catalog=records)
         print(f"{args.model} を準備中（初回の読み込みは計測外）", flush=True)
-        legacy("評価前の準備です。", [], can_search=False)
+        if modes == ("react",):
+            react({"question": "評価前の準備です。", "observations": [], "remaining_searches": 0}, actions=["insufficient"])
+        else:
+            legacy("評価前の準備です。", [], can_search=False)
 
         results = []
         for case in cases:
