@@ -271,8 +271,23 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .message-content code { padding: .1rem .24rem; border-radius: .25rem; background: #294b40; }
 .message-content .notice, .message-content .stopped { color: var(--muted); font-size: .87rem; }
 .message-status { display: flex; align-items: center; gap: .65rem; color: var(--muted); font-size: .87rem; }
-.activity-dots { display: inline-flex; align-items: center; gap: .17rem; flex: none; }
-.activity-dots > span { width: .29rem; height: .29rem; border-radius: 50%; background: var(--teal); }
+.activity-wave {
+  display: grid;
+  gap: .12rem;
+  flex: none;
+  width: 1.85rem;
+  overflow: hidden;
+  color: var(--teal);
+  mask-image: linear-gradient(90deg, transparent, #000 12% 88%, transparent);
+}
+.activity-wave > span {
+  width: calc(1.85rem + 1rem);
+  height: .4rem;
+  background:
+    radial-gradient(ellipse .278rem .19rem at 50% 100%, transparent 60%, currentColor 69% 94%, transparent 102%) 0 top / 1rem 50% repeat-x,
+    radial-gradient(ellipse .278rem .19rem at 50% 0%, transparent 60%, currentColor 69% 94%, transparent 102%) .5rem bottom / 1rem 50% repeat-x;
+}
+.activity-wave > span + span { background-position: .22rem top, .72rem bottom; opacity: .55; }
 
 .message-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin-top: .55rem; }
 .quiet-button, .sources > summary {
@@ -542,10 +557,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes activity {
-  0%, 65%, 100% { opacity: .45; transform: translateY(0); }
-  34% { opacity: 1; transform: translateY(-3px); }
-}
+@keyframes wave-flow { to { transform: translateX(-1rem); } }
 
 @keyframes answer-caret {
   50% { opacity: .25; }
@@ -572,9 +584,8 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .example:active { transform: translateY(1px); }
   .user-message { animation: rise-in 275ms var(--motion-out) both; }
   .guide-message { animation: rise-in 295ms var(--motion-out) 65ms both; }
-  .activity-dots > span { animation: activity 1.1s ease-in-out infinite; }
-  .activity-dots > span:nth-child(2) { animation-delay: 120ms; }
-  .activity-dots > span:nth-child(3) { animation-delay: 240ms; }
+  .activity-wave > span { animation: wave-flow 1.65s linear infinite; }
+  .activity-wave > span + span { animation-duration: 2.2s; }
   .progress-caption { --rise-distance: 4px; animation: rise-in 180ms ease-out both; }
   .streaming-answer::after { animation: answer-caret 1.05s ease-in-out infinite; }
   .result-ready:not(.has-streamed) .message-content > *,
