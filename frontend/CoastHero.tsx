@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import type { PropsWithChildren } from "react";
+import type { PropsWithChildren, ReactNode } from "react";
 
 const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
 
-export default function CoastHero({ poster, source, children }: PropsWithChildren<{ poster: string; source?: string }>) {
+interface CoastHeroProps {
+  poster: string;
+  source?: string;
+  brand: ReactNode;
+  entryForm: ReactNode;
+}
+
+export default function CoastHero({ poster, source, brand, entryForm, children }: PropsWithChildren<CoastHeroProps>) {
   const [reducedMotion, setReducedMotion] = useState(motionPreference.matches);
   const [hasFrame, setHasFrame] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -29,11 +36,13 @@ export default function CoastHero({ poster, source, children }: PropsWithChildre
             onPlaying={() => setHasFrame(true)} onError={() => setVideoFailed(true)} />
         )}
       </div>
-      <div id="coast-copy" className="coast-copy welcome wide" aria-hidden={sceneryOnly}>
-        {children}
+      <div id="coast-copy" className="coast-copy" aria-hidden={sceneryOnly}>
+        <div className="coast-brand"><div className="wide header-inner">{brand}</div></div>
+        <div className="welcome wide">{children}</div>
       </div>
       <button type="button" className="coast-view-toggle" aria-label="背景の文字を隠す"
         aria-controls="coast-copy" aria-pressed={sceneryOnly} onClick={() => setSceneryOnly((current) => !current)} />
+      <div className="entry-panel">{entryForm}</div>
     </section>
   );
 }

@@ -311,24 +311,42 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   }
 
   const appClass = ["app", inChat && "in-chat", hasTurns && "in-conversation"].filter(Boolean).join(" ");
+  const brand = (
+    <div className="brand">
+      <span className="brand-mark" aria-hidden="true"></span>
+      <div><strong>やまだ案内</strong><small>岩手県山田町</small></div>
+    </div>
+  );
+  const entryForm = (
+    <form id="entry-form" className="entry-form" onSubmit={enter}>
+      <label htmlFor="nickname">ニックネーム</label>
+      <div className="entry-input-row">
+        <input ref={nameField} id="nickname" type="text" maxLength={nicknameLimit} autoComplete="nickname" required
+          placeholder="例　なぎ" aria-describedby="entry-error" value={entryName}
+          onChange={(event) => {
+            setEntryName(event.currentTarget.value);
+            setEntryError("");
+          }} />
+        <button type="submit" className="enter-button">案内へ進む <span aria-hidden="true">→</span></button>
+      </div>
+      <p id="entry-error" className="form-error" role="alert" hidden={!entryError}>{entryError}</p>
+    </form>
+  );
   return (
     <div className={appClass}>
-      <header className="site-header">
+      <header className="site-header" hidden={!inChat}>
         <div className="wide header-inner">
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true"></span>
-            <div><strong>やまだ案内</strong><small>岩手県山田町</small></div>
-          </div>
-          <div id="chat-header" className="header-actions" hidden={!inChat}>
+          {brand}
+          <div id="chat-header" className="header-actions">
             <p id="mode" className="mode" hidden={!mode}>{mode}</p>
           </div>
         </div>
       </header>
 
-      <main id="entry-screen" className="guide" hidden={inChat}>
-        <div className="scroll-region entry-scroll">
-          {!inChat && <CoastHero poster={offlineData?.heroImage ?? "/sanriku-coast.webp"}
-            source={offlineData ? offlineData.heroVideo : "/sanriku-coast.mp4"}>
+      <main id="entry-screen" className="entry-screen" hidden={inChat}>
+        {!inChat && (
+          <CoastHero poster={offlineData?.heroImage ?? "/sanriku-coast.webp"}
+            source={offlineData ? offlineData.heroVideo : "/sanriku-coast.mp4"} brand={brand} entryForm={entryForm}>
             <div className="welcome-copy">
               <h1 id="page-title">
                 <span className="title-line"><span>山田町のことを、</span></span>
@@ -336,30 +354,8 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
               </h1>
               <p>観光や交通、くらしの疑問に、<br />地域の資料をもとにお答えします。</p>
             </div>
-          </CoastHero>}
-        </div>
-
-        <section className="composer-area entry-dock" aria-labelledby="entry-title">
-          <div className="dock-inner wide">
-            <div className="dock-intro">
-              <h2 id="entry-title">案内をはじめる</h2>
-              <p>チャット画面でお呼びする名前を入力してください。</p>
-            </div>
-            <form id="entry-form" className="entry-form" onSubmit={enter}>
-              <label htmlFor="nickname">ニックネーム</label>
-              <div className="entry-input-row">
-                <input ref={nameField} id="nickname" type="text" maxLength={nicknameLimit} autoComplete="nickname" required
-                  placeholder="例　なぎ" aria-describedby="entry-error" value={entryName}
-                  onChange={(event) => {
-                    setEntryName(event.currentTarget.value);
-                    setEntryError("");
-                  }} />
-                <button type="submit" className="enter-button">案内へ進む <span aria-hidden="true">→</span></button>
-              </div>
-              <p id="entry-error" className="form-error" role="alert" hidden={!entryError}>{entryError}</p>
-            </form>
-          </div>
-        </section>
+          </CoastHero>
+        )}
       </main>
 
       <main id="chat-screen" className="chat-screen" hidden={!inChat}>
