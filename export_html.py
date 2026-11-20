@@ -13,9 +13,9 @@ FOLDER = Path(__file__).parent
 WEB = FOLDER / "web"
 
 
-def embedded_photo(relative_path):
+def embedded_media(relative_path, content_type):
     encoded = base64.b64encode((WEB / relative_path).read_bytes()).decode("ascii")
-    return f"data:image/webp;base64,{encoded}"
+    return f"data:{content_type};base64,{encoded}"
 
 
 def embedded_data():
@@ -24,9 +24,10 @@ def embedded_data():
         "limit": SEARCH_LIMIT,
         "instructions": ANSWER_INSTRUCTIONS,
         "noEvidence": NO_EVIDENCE,
-        "photos": [photo_details(photo, embedded_photo(photo["file"])) for photo in PHOTO_CATALOG],
+        "photos": [photo_details(photo, embedded_media(photo["file"], "image/webp")) for photo in PHOTO_CATALOG],
         "photoLimit": PHOTO_LIMIT,
-        "heroImage": embedded_photo("yamada-bay.webp"),
+        "heroImage": embedded_media("sanriku-coast.webp", "image/webp"),
+        "heroVideo": embedded_media("sanriku-coast.mp4", "video/mp4"),
     }, ensure_ascii=False).replace("<", "\\u003c")
 
 

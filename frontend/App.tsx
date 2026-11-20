@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { loadMode, requestAnswer } from "./api";
 import ChatTurn from "./ChatTurn";
+import CoastHero from "./CoastHero";
 import { searchOffline } from "./offline";
 import type { OfflineData } from "./offline";
 import type { Pending, QuestionAndAnswer, Turn } from "./types";
@@ -325,24 +326,17 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
       </header>
 
       <main id="entry-screen" className="guide" hidden={inChat}>
-        <div className="scroll-region">
-          <section className="welcome wide" aria-labelledby="page-title">
+        <div className="scroll-region entry-scroll">
+          {!inChat && <CoastHero poster={offlineData?.heroImage ?? "/sanriku-coast.webp"}
+            source={offlineData ? offlineData.heroVideo : "/sanriku-coast.mp4"}>
             <div className="welcome-copy">
               <h1 id="page-title">
                 <span className="title-line"><span>山田町のことを、</span></span>
                 <span className="title-line"><span>聞いてみる。</span></span>
               </h1>
-              <p>観光や交通、くらしの疑問に、<br className="desktop-break" />地域の資料をもとにお答えします。</p>
+              <p>観光や交通、くらしの疑問に、<br />地域の資料をもとにお答えします。</p>
             </div>
-            <figure className="place">
-              <img src={offlineData?.heroImage ?? "/yamada-bay.webp"} width={1200} height={900} alt="山田湾の向こうに山が連なる山田港の風景" />
-              <figcaption>
-                <span>山田湾・山田港</span>
-                <span className="credit"><a href="https://commons.wikimedia.org/wiki/File:Port_yamada_20130601.JPG" target="_blank" rel="noopener">Opqr</a> /
-                  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a></span>
-              </figcaption>
-            </figure>
-          </section>
+          </CoastHero>}
         </div>
 
         <section className="composer-area entry-dock" aria-labelledby="entry-title">

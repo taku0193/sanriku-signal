@@ -18,6 +18,7 @@ export interface OfflineData {
   photos?: Photo[];
   photoLimit?: number;
   heroImage: string;
+  heroVideo?: string;
 }
 
 function normalize(text: string): string {

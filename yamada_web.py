@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,12 +13,15 @@ from yamada_rag import DEFAULT_OLLAMA_MODEL, NO_EVIDENCE, format_prompt, load_re
 from yamada_react import make_react_decider, run_turn
 
 
+COAST_VIDEO_TYPE = "video/mp4"
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/chat": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/yamada-bay.webp": ("yamada-bay.webp", "image/webp"),
+    "/sanriku-coast.webp": ("sanriku-coast.webp", "image/webp"),
+    "/sanriku-coast.mp4": ("sanriku-coast.mp4", COAST_VIDEO_TYPE),
 }
 ASSETS.update({"/" + photo["file"]: (photo["file"], "image/webp") for photo in PHOTO_CATALOG})
 WEB_DIR = Path(__file__).with_name("web")
@@ -88,14 +92,35 @@ class GuideHandler(BaseHTTPRequestHandler):
         self.retrieval_mode = retrieval_mode
         super().__init__(*args, **kwargs)
 
-    def send_content(self, status, content_type, data):
+    def send_content(self, status, content_type, data, *, headers=()):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
-        self.wfile.write(data)
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
+    def send_coast_video(self, data):
+        headers = [("Accept-Ranges", "bytes")]
+        # Safariなどはファイル先頭の一部を要求してから再生する。
+        requested = self.headers.get("Range", "") if self.command == "GET" and "If-Range" not in self.headers else ""
+        match = re.fullmatch(r"bytes=([0-9]{0,18})-([0-9]{0,18})", requested, re.IGNORECASE)
+        if not match or not any(match.groups()):
+            return self.send_content(200, COAST_VIDEO_TYPE, data, headers=headers)
+
+        first, last = match.groups()
+        size = len(data)
+        start = int(first) if first else max(0, size - int(last))
+        end = min(int(last), size - 1) if first and last else size - 1
+        if start > end:
+            headers.append(("Content-Range", f"bytes */{size}"))
+            return self.send_content(416, COAST_VIDEO_TYPE, b"", headers=headers)
+        headers.append(("Content-Range", f"bytes {start}-{end}/{size}"))
+        return self.send_content(206, COAST_VIDEO_TYPE, data[start:end + 1], headers=headers)
 
     def send_json(self, status, payload):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -115,7 +140,12 @@ class GuideHandler(BaseHTTPRequestHandler):
             data = (WEB_DIR / filename).read_bytes()
         except FileNotFoundError:
             return self.send_error(404)
+        if content_type == COAST_VIDEO_TYPE:
+            return self.send_coast_video(data)
         self.send_content(200, content_type, data)
+
+    def do_HEAD(self):
+        self.do_GET()
 
     def do_POST(self):
         if urlsplit(self.path).path != "/api/ask":
