@@ -75,6 +75,8 @@ python3 -B yamada_web.py --model --retrieval hybrid
 
 索引の `embeddings-cache.json` は資料から再生成するローカルファイルです。資料を更新したら `python3 -B -m yamada_embeddings` で差分を反映します。索引や埋め込みサーバーを利用できないときはキーワード検索に切り替わります。埋め込み用Ollamaの接続先を変える場合は `YAMADA_EMBED_URL`、モデル名を変える場合は `YAMADA_EMBED_MODEL` を設定します。設定変更後は同じ設定で索引を生成してアプリを起動します。
 
+GPUで動かすOllamaを別ポートに起動するなど、回答用の接続先を変えるときは `YAMADA_CHAT_URL` に `http://127.0.0.1:11435/api/chat` のように指定します。未設定の場合は `http://127.0.0.1:11434/api/chat` に接続します。
+
 ## 資料を増やすとき
 
 山田町公式サイトの記事一覧と、山田町観光協会の名所・施設・宿泊の一覧などから、本文・見出し・出典URL・取得日と、取得できる場合は掲載日を保存します。初回と資料を更新したいときに、このフォルダで実行します。町の記事の確認には数分かかります。 [山田町の記事一覧](https://www.town.yamada.iwate.jp/docs/) · [山田町観光協会](https://www.yamada-kankou.jp/)

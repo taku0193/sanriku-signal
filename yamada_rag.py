@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import os
 import re
 import sys
 import unicodedata
@@ -183,7 +184,7 @@ def chat_json(opener, model, messages, schema, *, context=4096, response_tokens=
         payload["think"] = False
         payload["options"].update(num_ctx=context, num_predict=response_tokens)
     request = Request(
-        OLLAMA_URL,
+        os.environ.get("YAMADA_CHAT_URL") or OLLAMA_URL,
         headers={"Content-Type": "application/json"},
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
     )
