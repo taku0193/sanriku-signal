@@ -155,6 +155,9 @@ class GuideHandler(BaseHTTPRequestHandler):
         def progress(stage):
             send_event({"type": "progress", "stage": stage})
 
+        def delta(text):
+            send_event({"type": "delta", "text": text})
+
         self.send_response(200)
         self.send_header("Content-Type", f"{EVENT_TYPE}; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -163,19 +166,19 @@ class GuideHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         try:
             self.end_headers()
-            result = self.answer_question(question, pending, history, on_progress=progress)
+            result = self.answer_question(question, pending, history, on_progress=progress, on_delta=delta)
             send_event({"type": "result", "data": result})
         except (BrokenPipeError, ConnectionResetError):
             return
 
-    def answer_question(self, question, pending, history, *, on_progress=None):
+    def answer_question(self, question, pending, history, *, on_progress=None, on_delta=None):
         mode, action, prompt, notice = "search", "search", "", ""
         next_pending = None
         if self.decide is not None:
             try:
                 result = run_turn(
                     question, self.records, self.decide, pending=pending, history=history,
-                    retriever=self.retriever, on_progress=on_progress,
+                    retriever=self.retriever, on_progress=on_progress, on_delta=on_delta,
                 )
                 mode = "ai"
                 action, answer, hits, next_pending = result.action, result.answer, result.sources, result.pending

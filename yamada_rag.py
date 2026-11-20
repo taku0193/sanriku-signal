@@ -175,9 +175,9 @@ def format_prompt(question, records):
     )
 
 
-def chat_json(opener, model, messages, schema, *, context=4096, response_tokens=512):
+def chat_json(opener, model, messages, schema, *, context=4096, response_tokens=512, on_content=None):
     payload = {
-        "model": model, "messages": messages, "stream": False, "format": schema,
+        "model": model, "messages": messages, "stream": on_content is not None, "format": schema,
         "options": {"temperature": 0},
     }
     if model == DEFAULT_OLLAMA_MODEL:
@@ -190,9 +190,35 @@ def chat_json(opener, model, messages, schema, *, context=4096, response_tokens=
     )
     try:
         with opener.open(request, timeout=120) as response:
-            decision = json.loads(json.load(response)["message"]["content"])
+            if on_content is None:
+                content = json.load(response)["message"]["content"]
+            else:
+                content = ""
+                for line in response:
+                    if not line.strip():
+                        continue
+                    event = json.loads(line)
+                    if not isinstance(event, dict):
+                        raise ValueError("Expected an Ollama event")
+                    if event.get("error"):
+                        raise RuntimeError("Ollamaでの生成が中断されました。")
+                    message = event.get("message", {})
+                    if not isinstance(message, dict):
+                        raise ValueError("Expected an Ollama message")
+                    fragment = message.get("content", "")
+                    if fragment:
+                        content += fragment
+                        on_content(content)
+                    if event.get("done") is True:
+                        break
+                else:
+                    raise ValueError("Incomplete Ollama stream")
+            decision = json.loads(content)
         if not isinstance(decision, dict):
             raise ValueError("Expected a JSON object")
+        for field in ("answer", "other_answer"):
+            if isinstance(decision.get(field), str):
+                decision[field].encode("utf-8")
         return decision
     except HTTPError as error:
         raise RuntimeError(f"OllamaがHTTP {error.code}を返しました。ollama list でモデル名を確認してください。") from error

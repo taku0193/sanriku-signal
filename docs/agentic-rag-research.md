@@ -106,3 +106,11 @@ ReActの検索が進む間も利用者に状態を伝えられるよう、ブラ
 トップの見出しと写真、会話に入るときの入力欄、検索の状態表示、回答と出典に動きを加えた。単体HTMLでも動かせるよう、CSSとブラウザー標準のWeb Animations APIを採用した。ChromeでGPU版の回答と出典が表示されること、幅390ピクセルで動きを減らす設定を有効にすると演出が省略されることを確認した。 [Web Animations](https://www.w3.org/TR/web-animations-1/) · [動きを減らす設定](https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion)
 
 APU-Naviで名前を入力した後にチャット画面へ切り替わる流れを確認し、山田町案内も入口とチャットを分けた。Webでは `/chat`、単体HTMLでは `#chat` に進む。呼び名はブラウザーのタブ内で挨拶に使い、質問APIには送らない。Chromeで戻る・進む、チャット画面の再読み込み、名前の変更、スマートフォン幅の操作を確認した。 [APU-Navi](https://ibera.cps.akita-pu.ac.jp/) · [History API](https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-history-interface) · [セッションストレージ](https://html.spec.whatwg.org/multipage/webstorage.html#the-sessionstorage-attribute)
+
+## 回答本文のストリーミング
+
+ReActで得られた資料を使って回答を生成する際は、Ollamaに行動・出典ID・本文の順で構造化出力を求める。出典IDを取得済みの資料に照合できた段階から、読める本文をブラウザーに送る。最終イベントで回答と出典を確定する。ごみ収集日はPythonが日程表と照合した結果を表示する。 [Ollamaのストリーミング](https://docs.ollama.com/api/streaming) · [Ollamaの構造化出力](https://docs.ollama.com/capabilities/structured-outputs)
+
+RTX 3090 Tiで科学館の開館時間・休館日・入館料をまとめて尋ねた一例では、本文の最初の断片が1.55秒、最終回答が2.31秒で届いた。Chromeで生成中の本文表示と途中停止を試し、幅390ピクセルの画面で閲覧位置が保たれることを確認した。
+
+既存10問の回答評価では、ストリーミング応答と一括JSON応答の両方で8問が合格した。駅名から施設を特定する比較と翌日の混雑は、両方で要確認だった。

@@ -184,6 +184,28 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .chat-rail-bottom { display: grid; gap: .35rem; padding-top: .65rem; border-top: 1px solid var(--line); }
 .profile-name { padding-inline: .43rem; font-size: .84rem; font-weight: 700; overflow-wrap: anywhere; }
 .chat-rail-bottom .quiet-button { justify-self: start; text-align: left; }
+.chat-timeline {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.jump-latest {
+  position: absolute;
+  bottom: .72rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: .34rem .7rem;
+  border: 1px solid var(--line);
+  border-radius: 1.4rem;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 5px 16px #08241b77;
+  font-size: .77rem;
+  font-weight: 670;
+  white-space: nowrap;
+}
+.jump-latest:hover { border-color: var(--accent); }
 .chat-screen .scroll-region {
   background: radial-gradient(ellipse at 53% 50%, #234942 0, #17332e 47%, transparent 76%);
 }
@@ -228,6 +250,17 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 .message-content { font-size: .98rem; line-height: 1.85; overflow-wrap: anywhere; }
 .message-content > * + * { margin-top: .62rem; }
 .message-content p { white-space: pre-line; }
+.message-content .streaming-answer { white-space: pre-wrap; }
+.streaming-answer::after {
+  content: "";
+  display: inline-block;
+  width: .18em;
+  height: .92em;
+  margin-inline-start: .16em;
+  vertical-align: -.09em;
+  border-radius: .1em;
+  background: var(--accent);
+}
 .message-content h3 { font-size: 1.05rem; line-height: 1.5; }
 .message-content ul, .message-content ol { margin-bottom: 0; padding-left: 1.4rem; }
 .message-content li + li { margin-top: .2rem; }
@@ -494,6 +527,10 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   34% { opacity: 1; transform: translateY(-3px); }
 }
 
+@keyframes answer-caret {
+  50% { opacity: .25; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .title-line { overflow: clip; overflow-clip-margin: .08em; }
   .title-line > span { animation: title-arrive 610ms var(--motion-out) both; }
@@ -516,7 +553,8 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   .activity-dots > span { animation: activity 1.1s ease-in-out infinite; }
   .activity-dots > span:nth-child(2) { animation-delay: 120ms; }
   .activity-dots > span:nth-child(3) { animation-delay: 240ms; }
-  .result-ready .message-content > *,
+  .streaming-answer::after { animation: answer-caret 1.05s ease-in-out infinite; }
+  .result-ready:not(.has-streamed) .message-content > *,
   .result-ready .sources,
   .result-ready .message-tools { animation: rise-in 320ms var(--motion-out) both; }
   .result-ready .message-content > :nth-child(2) { animation-delay: 45ms; }
@@ -576,9 +614,9 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
             <form id="entry-form" class="entry-form">
               <label for="nickname">ニックネーム</label>
               <div class="entry-input-row">
-                <input id="nickname" name="nickname" type="text" maxlength="24" autocomplete="nickname" required
+                <input id="nickname" type="text" maxlength="24" autocomplete="nickname" required
                   placeholder="例　なぎ" aria-describedby="entry-error">
-                <button type="submit" class="enter-button">案内へ進む <span aria-hidden="true">→</span></button>
+                <button type="submit" class="enter-button" disabled>案内へ進む <span aria-hidden="true">→</span></button>
               </div>
               <p id="entry-error" class="form-error" role="alert" hidden></p>
               <noscript><p class="form-error">案内をはじめるにはJavaScriptを有効にしてください。</p></noscript>
@@ -598,19 +636,24 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
           </div>
         </aside>
         <div class="guide">
-          <div id="scroll-region" class="scroll-region">
-            <section id="welcome" class="chat-welcome content" aria-labelledby="chat-heading">
-              <span class="brand-mark" aria-hidden="true"></span>
-              <h1 id="chat-heading" tabindex="-1"><span id="greeting-name"></span>さん、こんにちは。</h1>
-              <p>山田町について、何を知りたいですか？</p>
-              <div class="examples" aria-label="質問例">
-                <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
-                <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
-                <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
-                <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
-              </div>
-            </section>
-            <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
+          <div class="chat-timeline">
+            <div id="scroll-region" class="scroll-region">
+              <section id="welcome" class="chat-welcome content" aria-labelledby="chat-heading">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <h1 id="chat-heading" tabindex="-1"><span id="greeting-name"></span>さん、こんにちは。</h1>
+                <p>山田町について、何を知りたいですか？</p>
+                <div class="examples" aria-label="質問例">
+                  <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
+                  <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
+                  <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
+                  <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
+                </div>
+              </section>
+              <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
+            </div>
+            <button id="jump-latest" class="jump-latest" type="button" aria-controls="conversation" hidden>
+              <span aria-hidden="true">↓</span> 最新のメッセージへ
+            </button>
           </div>
 
           <div class="composer-area chat-dock">
@@ -627,7 +670,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
                   <button id="submit" class="send-button" type="submit" aria-label="質問を送信" title="質問を送信" disabled>
                     <span class="send-icon" aria-hidden="true"></span>
                   </button>
-                  <button id="stop" class="send-button stop-button" type="button" aria-label="応答の表示を停止" title="応答の表示を停止" hidden>
+                  <button id="stop" class="send-button stop-button" type="button" aria-label="回答を停止" title="回答を停止" hidden>
                     <span class="stop-icon" aria-hidden="true"></span>
                   </button>
                 </div>
@@ -713,6 +756,7 @@ const formError = document.querySelector("#form-error");
 const welcome = document.querySelector("#welcome");
 const conversation = document.querySelector("#conversation");
 const scrollRegion = document.querySelector("#scroll-region");
+const jumpLatest = document.querySelector("#jump-latest");
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
 const entryUrl = new URL(offlineSearch ? location.href : "/", location.href);
@@ -726,6 +770,7 @@ const progressLabels = {
   planning: "質問を確認しています…",
   searching: "山田町の資料を探しています…",
   reviewing: "資料を確認して回答をまとめています…",
+  generating: "回答を生成しています…",
 };
 
 let pending = null;
@@ -785,8 +830,13 @@ function bottomIsVisible() {
   return scrollRegion.scrollHeight - scrollRegion.scrollTop - scrollRegion.clientHeight < 80;
 }
 
+function updateJumpLatest() {
+  jumpLatest.hidden = conversation.hidden || bottomIsVisible();
+}
+
 function scrollToBottom() {
   scrollRegion.scrollTop = scrollRegion.scrollHeight;
+  updateJumpLatest();
 }
 
 function transitionComposer(update) {
@@ -968,7 +1018,10 @@ function createTurn(query) {
   activity.append(element("span"), element("span"), element("span"));
   const progress = element("span", "", progressLabels.planning);
   status.append(activity, progress);
-  body.append(status);
+  const preview = element("p", "streaming-answer");
+  preview.setAttribute("aria-hidden", "true");
+  preview.hidden = true;
+  body.append(status, preview);
   row.append(title, body);
   guideMessage.append(mark, row);
   turn.append(userMessage, guideMessage);
@@ -977,10 +1030,31 @@ function createTurn(query) {
   welcome.hidden = true;
   app.classList.add("in-conversation");
   scrollToBottom();
-  return { row, title, body, progress };
+  return { row, title, body, progress, preview, partial: "", frame: null };
+}
+
+function scheduleDelta(view, text) {
+  view.partial += text;
+  if (view.frame !== null) return;
+  view.frame = requestAnimationFrame(() => {
+    view.frame = null;
+    const atBottom = bottomIsVisible();
+    if (view.preview.hidden) updateProgress(view.progress, "generating");
+    view.preview.hidden = false;
+    view.preview.textContent = view.partial;
+    if (atBottom) scrollToBottom();
+    else updateJumpLatest();
+  });
+}
+
+function cancelPreviewFrame(view) {
+  if (view.frame === null) return;
+  cancelAnimationFrame(view.frame);
+  view.frame = null;
 }
 
 function displayResult(view, result) {
+  if (!view.preview.hidden && result.action === "answer") view.row.classList.add("has-streamed");
   view.body.replaceChildren();
   if (result.notice) view.body.append(element("p", "notice", result.notice));
   if (result.answer) formatAnswer(view.body, result.answer);
@@ -996,7 +1070,7 @@ function displayResult(view, result) {
   view.row.classList.add("result-ready");
 }
 
-async function readEvents(response, onProgress) {
+async function readEvents(response, onEvent) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -1009,8 +1083,8 @@ async function readEvents(response, onProgress) {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        if (event.type === "progress") onProgress(event.stage);
         if (event.type === "result") return event.data;
+        onEvent(event);
       }
       if (done) throw new Error("応答が途中で途切れました。もう一度お試しください。");
     }
@@ -1020,7 +1094,7 @@ async function readEvents(response, onProgress) {
   }
 }
 
-async function ask(query, currentPending, signal, onProgress) {
+async function ask(query, currentPending, signal, onEvent) {
   if (offlineSearch) return offlineSearch(query);
   const response = await fetch("/api/ask", {
     method: "POST",
@@ -1029,7 +1103,7 @@ async function ask(query, currentPending, signal, onProgress) {
     signal,
   });
   if (response.ok && response.headers.get("Content-Type")?.includes(eventType)) {
-    return readEvents(response, onProgress);
+    return readEvents(response, onEvent);
   }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "質問を送信できませんでした。");
@@ -1039,7 +1113,9 @@ async function ask(query, currentPending, signal, onProgress) {
 function displayFailure(view, query, message, stopped) {
   const notice = element("p", stopped ? "stopped" : "message-error", message);
   notice.setAttribute("role", stopped ? "status" : "alert");
-  view.body.replaceChildren(notice);
+  view.body.replaceChildren();
+  if (stopped && view.partial.trim()) formatAnswer(view.body, view.partial.trim());
+  view.body.append(notice);
   const restore = element("button", "quiet-button", "質問を入力欄に戻す");
   restore.type = "button";
   restore.addEventListener("click", () => {
@@ -1070,10 +1146,20 @@ form.addEventListener("submit", async (event) => {
   const view = welcome.hidden ? createTurn(query) : transitionComposer(() => createTurn(query));
   if (fromExample) view.title.focus({ preventScroll: true });
   try {
-    const result = await ask(query, currentPending, controller.signal, (stage) => {
-      const atBottom = bottomIsVisible();
-      updateProgress(view.progress, stage);
-      if (atBottom) scrollToBottom();
+    const result = await ask(query, currentPending, controller.signal, (event) => {
+      if (active !== controller || controller.signal.aborted) return;
+      if (event.type === "delta" && typeof event.text === "string") scheduleDelta(view, event.text);
+      if (event.type === "progress") {
+        const atBottom = bottomIsVisible();
+        if (view.partial) {
+          cancelPreviewFrame(view);
+          view.partial = "";
+          view.preview.hidden = true;
+        }
+        updateProgress(view.progress, event.stage);
+        if (atBottom) scrollToBottom();
+        else updateJumpLatest();
+      }
     });
     if (active !== controller) return;
 
@@ -1087,16 +1173,19 @@ form.addEventListener("submit", async (event) => {
       }].slice(-2);
     }
     if (atBottom) scrollToBottom();
+    else updateJumpLatest();
   } catch (error) {
     if (active !== controller) return;
     const atBottom = bottomIsVisible();
     const stopped = controller.signal.aborted;
-    const message = stopped ? "応答の表示を停止しました。" : error instanceof TypeError
+    const message = stopped ? "回答を途中で停止しました。" : error instanceof TypeError
       ? "サーバーに接続できませんでした。接続を確認して、もう一度お試しください。"
       : error.message;
     displayFailure(view, query, message, stopped);
     if (atBottom) scrollToBottom();
+    else updateJumpLatest();
   } finally {
+    cancelPreviewFrame(view);
     if (active === controller) {
       active = null;
       updateComposer();
@@ -1123,6 +1212,7 @@ function resetConversation() {
   conversation.hidden = true;
   welcome.hidden = false;
   app.classList.remove("in-conversation");
+  updateJumpLatest();
   question.value = "";
   showText(formError, "");
   scrollRegion.scrollTop = 0;
@@ -1164,6 +1254,15 @@ skipFollowUp.addEventListener("click", () => {
   question.focus();
 });
 stop.addEventListener("click", () => active?.abort());
+scrollRegion.addEventListener("scroll", updateJumpLatest, { passive: true });
+jumpLatest.addEventListener("click", () => {
+  conversation.lastElementChild?.querySelector(".message-label")?.focus({ preventScroll: true });
+  scrollRegion.scrollTo({
+    top: scrollRegion.scrollHeight,
+    behavior: reducedMotion.matches ? "auto" : "smooth",
+  });
+  updateJumpLatest();
+});
 
 for (const example of document.querySelectorAll(".example")) {
   example.addEventListener("click", () => {
@@ -1190,6 +1289,7 @@ async function loadSettings() {
 
 nicknameInput.value = nickname;
 showScreen();
+entryForm.querySelector(".enter-button").disabled = false;
 loadSettings();
 </script>
 </body>

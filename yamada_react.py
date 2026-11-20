@@ -24,6 +24,10 @@ HISTORY_INSTRUCTIONS = (
     "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、"
     "回答の根拠は今回の observations に限定します。"
 )
+STREAM_INSTRUCTIONS = "回答を返す場合は、JSONを action、sources、answer の順で書いてください。"
+ANSWER_PREFIX = re.compile(r'\A\s*\{\s*"action"\s*:\s*"answer"\s*,\s*"sources"\s*:\s*')
+ANSWER_FIELD = re.compile(r'\s*,\s*"answer"\s*:\s*"')
+JSON_STRING_PREFIX = re.compile(r'(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*')
 INSTRUCTIONS = f"""{ANSWER_INSTRUCTIONS}
 あなたは質問、聞き返しへの返答、検索の観察を読み、次の行動を一つ選びます。
 入力の question は最初に尋ねられたことです。follow_up があれば、聞き返しに対する利用者の返答です。
@@ -66,10 +70,50 @@ class TurnResult:
     pending: dict | None = None
 
 
+def read_grounded_answer_prefix(content, evidence):
+    """出典が照合できた時点から、JSONの回答文のうち復号できる部分を返す。"""
+    prefix = ANSWER_PREFIX.match(content)
+    if prefix is None:
+        return ""
+    try:
+        sources, end = json.JSONDecoder().raw_decode(content, prefix.end())
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(sources, list) or not sources or not all(
+        isinstance(source, str) and source in evidence for source in sources
+    ):
+        return ""
+    field = ANSWER_FIELD.match(content, end)
+    if field is None:
+        return ""
+    escaped = JSON_STRING_PREFIX.match(content, field.end()).group()
+    answer = json.loads(f'"{escaped}"')
+    if answer and "\ud800" <= answer[-1] <= "\udbff":
+        answer = answer[:-1]
+    try:
+        answer.encode("utf-8")
+    except UnicodeEncodeError:
+        return ""
+    return answer.lstrip()
+
+
+def stream_grounded_answer(evidence, on_delta):
+    emitted = ""
+
+    def receive(content):
+        nonlocal emitted
+        answer = read_grounded_answer_prefix(content, evidence)
+        if len(answer) > len(emitted) and answer.startswith(emitted):
+            on_delta(answer[len(emitted):])
+            emitted = answer
+
+    return receive
+
+
 def make_react_decider(model):
     opener = build_opener(ProxyHandler({}))
 
-    def decide(state, *, actions):
+    def decide(state, *, actions, on_content=None):
         schema = {
             "type": "object",
             "properties": {
@@ -92,11 +136,17 @@ def make_react_decider(model):
             "additionalProperties": False,
         }
         instructions = f"{INSTRUCTIONS}\n\n{HISTORY_INSTRUCTIONS}" if state.get("history") else INSTRUCTIONS
+        if on_content is not None:
+            properties = schema["properties"]
+            ordered = {key: properties[key] for key in ("action", "sources", "answer")}
+            ordered.update(properties)
+            schema["properties"] = ordered
+            instructions += f"\n\n{STREAM_INSTRUCTIONS}"
         messages = [
             {"role": "system", "content": instructions},
             {"role": "user", "content": json.dumps(state, ensure_ascii=False)},
         ]
-        return chat_json(opener, model, messages, schema, context=6144, response_tokens=448)
+        return chat_json(opener, model, messages, schema, context=6144, response_tokens=448, on_content=on_content)
 
     return decide
 
@@ -113,7 +163,7 @@ def asks_collection_date(text):
 
 
 def run_turn(question, records, decide, *, pending=None, history=(), on_action=None, on_progress=None,
-             today=None, retriever=None):
+             on_delta=None, today=None, retriever=None):
     today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
     fiscal_year = today.year if today.month >= 4 else today.year - 1
     state = {
@@ -159,7 +209,10 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
         state["remaining_searches"] = remaining
         if on_progress:
             on_progress("reviewing" if state["observations"] else "planning")
-        decision = decide(state, actions=actions)
+        if on_delta is not None and evidence and not calendar_question:
+            decision = decide(state, actions=actions, on_content=stream_grounded_answer(evidence, on_delta))
+        else:
+            decision = decide(state, actions=actions)
         action = decision.get("action")
         if action not in actions:
             break

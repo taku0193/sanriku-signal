@@ -23,6 +23,7 @@ const formError = document.querySelector("#form-error");
 const welcome = document.querySelector("#welcome");
 const conversation = document.querySelector("#conversation");
 const scrollRegion = document.querySelector("#scroll-region");
+const jumpLatest = document.querySelector("#jump-latest");
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
 const entryUrl = new URL(offlineSearch ? location.href : "/", location.href);
@@ -36,6 +37,7 @@ const progressLabels = {
   planning: "質問を確認しています…",
   searching: "山田町の資料を探しています…",
   reviewing: "資料を確認して回答をまとめています…",
+  generating: "回答を生成しています…",
 };
 
 let pending = null;
@@ -95,8 +97,13 @@ function bottomIsVisible() {
   return scrollRegion.scrollHeight - scrollRegion.scrollTop - scrollRegion.clientHeight < 80;
 }
 
+function updateJumpLatest() {
+  jumpLatest.hidden = conversation.hidden || bottomIsVisible();
+}
+
 function scrollToBottom() {
   scrollRegion.scrollTop = scrollRegion.scrollHeight;
+  updateJumpLatest();
 }
 
 function transitionComposer(update) {
@@ -278,7 +285,10 @@ function createTurn(query) {
   activity.append(element("span"), element("span"), element("span"));
   const progress = element("span", "", progressLabels.planning);
   status.append(activity, progress);
-  body.append(status);
+  const preview = element("p", "streaming-answer");
+  preview.setAttribute("aria-hidden", "true");
+  preview.hidden = true;
+  body.append(status, preview);
   row.append(title, body);
   guideMessage.append(mark, row);
   turn.append(userMessage, guideMessage);
@@ -287,10 +297,31 @@ function createTurn(query) {
   welcome.hidden = true;
   app.classList.add("in-conversation");
   scrollToBottom();
-  return { row, title, body, progress };
+  return { row, title, body, progress, preview, partial: "", frame: null };
+}
+
+function scheduleDelta(view, text) {
+  view.partial += text;
+  if (view.frame !== null) return;
+  view.frame = requestAnimationFrame(() => {
+    view.frame = null;
+    const atBottom = bottomIsVisible();
+    if (view.preview.hidden) updateProgress(view.progress, "generating");
+    view.preview.hidden = false;
+    view.preview.textContent = view.partial;
+    if (atBottom) scrollToBottom();
+    else updateJumpLatest();
+  });
+}
+
+function cancelPreviewFrame(view) {
+  if (view.frame === null) return;
+  cancelAnimationFrame(view.frame);
+  view.frame = null;
 }
 
 function displayResult(view, result) {
+  if (!view.preview.hidden && result.action === "answer") view.row.classList.add("has-streamed");
   view.body.replaceChildren();
   if (result.notice) view.body.append(element("p", "notice", result.notice));
   if (result.answer) formatAnswer(view.body, result.answer);
@@ -306,7 +337,7 @@ function displayResult(view, result) {
   view.row.classList.add("result-ready");
 }
 
-async function readEvents(response, onProgress) {
+async function readEvents(response, onEvent) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -319,8 +350,8 @@ async function readEvents(response, onProgress) {
       for (const line of lines) {
         if (!line.trim()) continue;
         const event = JSON.parse(line);
-        if (event.type === "progress") onProgress(event.stage);
         if (event.type === "result") return event.data;
+        onEvent(event);
       }
       if (done) throw new Error("応答が途中で途切れました。もう一度お試しください。");
     }
@@ -330,7 +361,7 @@ async function readEvents(response, onProgress) {
   }
 }
 
-async function ask(query, currentPending, signal, onProgress) {
+async function ask(query, currentPending, signal, onEvent) {
   if (offlineSearch) return offlineSearch(query);
   const response = await fetch("/api/ask", {
     method: "POST",
@@ -339,7 +370,7 @@ async function ask(query, currentPending, signal, onProgress) {
     signal,
   });
   if (response.ok && response.headers.get("Content-Type")?.includes(eventType)) {
-    return readEvents(response, onProgress);
+    return readEvents(response, onEvent);
   }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "質問を送信できませんでした。");
@@ -349,7 +380,9 @@ async function ask(query, currentPending, signal, onProgress) {
 function displayFailure(view, query, message, stopped) {
   const notice = element("p", stopped ? "stopped" : "message-error", message);
   notice.setAttribute("role", stopped ? "status" : "alert");
-  view.body.replaceChildren(notice);
+  view.body.replaceChildren();
+  if (stopped && view.partial.trim()) formatAnswer(view.body, view.partial.trim());
+  view.body.append(notice);
   const restore = element("button", "quiet-button", "質問を入力欄に戻す");
   restore.type = "button";
   restore.addEventListener("click", () => {
@@ -380,10 +413,20 @@ form.addEventListener("submit", async (event) => {
   const view = welcome.hidden ? createTurn(query) : transitionComposer(() => createTurn(query));
   if (fromExample) view.title.focus({ preventScroll: true });
   try {
-    const result = await ask(query, currentPending, controller.signal, (stage) => {
-      const atBottom = bottomIsVisible();
-      updateProgress(view.progress, stage);
-      if (atBottom) scrollToBottom();
+    const result = await ask(query, currentPending, controller.signal, (event) => {
+      if (active !== controller || controller.signal.aborted) return;
+      if (event.type === "delta" && typeof event.text === "string") scheduleDelta(view, event.text);
+      if (event.type === "progress") {
+        const atBottom = bottomIsVisible();
+        if (view.partial) {
+          cancelPreviewFrame(view);
+          view.partial = "";
+          view.preview.hidden = true;
+        }
+        updateProgress(view.progress, event.stage);
+        if (atBottom) scrollToBottom();
+        else updateJumpLatest();
+      }
     });
     if (active !== controller) return;
 
@@ -397,16 +440,19 @@ form.addEventListener("submit", async (event) => {
       }].slice(-2);
     }
     if (atBottom) scrollToBottom();
+    else updateJumpLatest();
   } catch (error) {
     if (active !== controller) return;
     const atBottom = bottomIsVisible();
     const stopped = controller.signal.aborted;
-    const message = stopped ? "応答の表示を停止しました。" : error instanceof TypeError
+    const message = stopped ? "回答を途中で停止しました。" : error instanceof TypeError
       ? "サーバーに接続できませんでした。接続を確認して、もう一度お試しください。"
       : error.message;
     displayFailure(view, query, message, stopped);
     if (atBottom) scrollToBottom();
+    else updateJumpLatest();
   } finally {
+    cancelPreviewFrame(view);
     if (active === controller) {
       active = null;
       updateComposer();
@@ -433,6 +479,7 @@ function resetConversation() {
   conversation.hidden = true;
   welcome.hidden = false;
   app.classList.remove("in-conversation");
+  updateJumpLatest();
   question.value = "";
   showText(formError, "");
   scrollRegion.scrollTop = 0;
@@ -474,6 +521,15 @@ skipFollowUp.addEventListener("click", () => {
   question.focus();
 });
 stop.addEventListener("click", () => active?.abort());
+scrollRegion.addEventListener("scroll", updateJumpLatest, { passive: true });
+jumpLatest.addEventListener("click", () => {
+  conversation.lastElementChild?.querySelector(".message-label")?.focus({ preventScroll: true });
+  scrollRegion.scrollTo({
+    top: scrollRegion.scrollHeight,
+    behavior: reducedMotion.matches ? "auto" : "smooth",
+  });
+  updateJumpLatest();
+});
 
 for (const example of document.querySelectorAll(".example")) {
   example.addEventListener("click", () => {
@@ -500,4 +556,5 @@ async function loadSettings() {
 
 nicknameInput.value = nickname;
 showScreen();
+entryForm.querySelector(".enter-button").disabled = false;
 loadSettings();

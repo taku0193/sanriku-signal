@@ -53,9 +53,9 @@
             <form id="entry-form" class="entry-form">
               <label for="nickname">ニックネーム</label>
               <div class="entry-input-row">
-                <input id="nickname" name="nickname" type="text" maxlength="24" autocomplete="nickname" required
+                <input id="nickname" type="text" maxlength="24" autocomplete="nickname" required
                   placeholder="例　なぎ" aria-describedby="entry-error">
-                <button type="submit" class="enter-button">案内へ進む <span aria-hidden="true">→</span></button>
+                <button type="submit" class="enter-button" disabled>案内へ進む <span aria-hidden="true">→</span></button>
               </div>
               <p id="entry-error" class="form-error" role="alert" hidden></p>
               <noscript><p class="form-error">案内をはじめるにはJavaScriptを有効にしてください。</p></noscript>
@@ -75,19 +75,24 @@
           </div>
         </aside>
         <div class="guide">
-          <div id="scroll-region" class="scroll-region">
-            <section id="welcome" class="chat-welcome content" aria-labelledby="chat-heading">
-              <span class="brand-mark" aria-hidden="true"></span>
-              <h1 id="chat-heading" tabindex="-1"><span id="greeting-name"></span>さん、こんにちは。</h1>
-              <p>山田町について、何を知りたいですか？</p>
-              <div class="examples" aria-label="質問例">
-                <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
-                <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
-                <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
-                <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
-              </div>
-            </section>
-            <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
+          <div class="chat-timeline">
+            <div id="scroll-region" class="scroll-region">
+              <section id="welcome" class="chat-welcome content" aria-labelledby="chat-heading">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <h1 id="chat-heading" tabindex="-1"><span id="greeting-name"></span>さん、こんにちは。</h1>
+                <p>山田町について、何を知りたいですか？</p>
+                <div class="examples" aria-label="質問例">
+                  <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
+                  <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
+                  <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
+                  <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
+                </div>
+              </section>
+              <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
+            </div>
+            <button id="jump-latest" class="jump-latest" type="button" aria-controls="conversation" hidden>
+              <span aria-hidden="true">↓</span> 最新のメッセージへ
+            </button>
           </div>
 
           <div class="composer-area chat-dock">
@@ -104,7 +109,7 @@
                   <button id="submit" class="send-button" type="submit" aria-label="質問を送信" title="質問を送信" disabled>
                     <span class="send-icon" aria-hidden="true"></span>
                   </button>
-                  <button id="stop" class="send-button stop-button" type="button" aria-label="応答の表示を停止" title="応答の表示を停止" hidden>
+                  <button id="stop" class="send-button stop-button" type="button" aria-label="回答を停止" title="回答を停止" hidden>
                     <span class="stop-icon" aria-hidden="true"></span>
                   </button>
                 </div>

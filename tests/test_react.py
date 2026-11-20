@@ -1,14 +1,33 @@
+import json
 import unittest
 from datetime import date
 from unittest.mock import Mock, patch
 
 from yamada_calendars import AmbiguousDistrict, collection_bounds, find_collection_calendar, find_collection_days
 from yamada_rag import load_records, search
-from yamada_react import asks_collection_date, run_turn
+from yamada_react import asks_collection_date, run_turn, stream_grounded_answer
 from yamada_web import public_source, read_history
 
 
 class ReactTests(unittest.TestCase):
+    def test_stream_decodes_split_json_escapes_without_exposing_source_ids(self):
+        answer = '入館料は「300円」です。\n資料の表記は "大人" 🐋'
+        content = json.dumps({"action": "answer", "sources": ["museum-fees"], "answer": answer})
+        deltas = []
+        receive = stream_grounded_answer({"museum-fees"}, deltas.append)
+        for length in range(1, len(content)):
+            receive(content[:length])
+        self.assertGreater(len(deltas), 1)
+        self.assertEqual("".join(deltas), answer)
+
+    def test_stream_waits_for_all_sources_to_be_known(self):
+        deltas = []
+        receive = stream_grounded_answer({"seen"}, deltas.append)
+        receive('{"action":"answer","sources":["seen","unseen"],"answer":"300円"}')
+        receive('{"action":"answer","answer":"300円","sources":["seen"]}')
+        receive('{"action":"insufficient","sources":["seen"],"answer":"確認できません"}')
+        self.assertEqual(deltas, [])
+
     def test_history_resolves_references_but_only_search_results_can_be_cited(self):
         history = read_history([{"question": "科学館の料金は？", "answer": "大人300円です。"}])
         events = []
@@ -43,7 +62,10 @@ class ReactTests(unittest.TestCase):
              "waste_types": ["burnable"]},
             {"action": "answer", "answer": "11月22日です。", "sources": ["calendar-2026-osawa"]},
         ])
-        second = run_turn("大沢です。", [], continuation, pending=first.pending, today=date(2026, 11, 20))
+        on_delta = Mock()
+        second = run_turn("大沢です。", [], continuation, pending=first.pending, today=date(2026, 11, 20),
+                          on_delta=on_delta)
+        on_delta.assert_not_called()
         self.assertEqual(second.action, "answer")
         self.assertIsNone(second.pending)
         self.assertEqual(second.sources[0]["id"], "calendar-2026-osawa")
