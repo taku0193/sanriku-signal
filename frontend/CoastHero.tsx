@@ -9,6 +9,7 @@ export default function CoastHero({ poster, source, children }: PropsWithChildre
   const [playing, setPlaying] = useState(false);
   const [hasFrame, setHasFrame] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [sceneryOnly, setSceneryOnly] = useState(false);
 
   useEffect(() => {
     function updatePreference(event: MediaQueryListEvent) {
@@ -29,7 +30,7 @@ export default function CoastHero({ poster, source, children }: PropsWithChildre
 
   const showVideo = source && !reducedMotion && !videoFailed;
   return (
-    <section className="coast-hero" aria-labelledby="page-title">
+    <section className="coast-hero" data-scenery-only={sceneryOnly} aria-labelledby="page-title">
       <div className="coast-backdrop" aria-hidden="true">
         <img src={poster} alt="" width={1280} height={720} fetchPriority="high" />
         {showVideo && (
@@ -40,16 +41,24 @@ export default function CoastHero({ poster, source, children }: PropsWithChildre
         )}
       </div>
       <div className="welcome wide">
-        {children}
+        <div id="coast-copy" className="coast-copy" aria-hidden={sceneryOnly}>{children}</div>
         <div className="coast-tools">
-          <p>三陸海岸をイメージした生成{showVideo ? "映像" : "画像"}</p>
+          <p id="coast-caption" className="coast-caption" aria-hidden={sceneryOnly}>
+            三陸海岸をイメージした生成{showVideo ? "映像" : "画像"}
+          </p>
           {showVideo && (
-            <button type="button" className="coast-playback" onClick={togglePlayback}
+            <button type="button" className="coast-control coast-playback" onClick={togglePlayback}
               aria-label={playing ? "背景動画を一時停止" : "背景動画を再生"}>
               <span aria-hidden="true">{playing ? "Ⅱ" : "▶"}</span>
-              {playing ? "一時停止" : "再生"}
+              {!sceneryOnly && (playing ? "一時停止" : "再生")}
             </button>
           )}
+          <button type="button" className="coast-control coast-view-toggle" aria-label="背景の文字を隠す"
+            aria-controls="coast-copy coast-caption" aria-pressed={sceneryOnly}
+            title={sceneryOnly ? "文字を表示" : "文字を隠す"} onClick={() => setSceneryOnly((current) => !current)}>
+            <span className="coast-view-icon" aria-hidden="true">{sceneryOnly ? "×" : "⛶"}</span>
+            {!sceneryOnly && "文字を隠す"}
+          </button>
         </div>
       </div>
     </section>
