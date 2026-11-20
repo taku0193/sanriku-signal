@@ -103,6 +103,17 @@ class ReactTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             collection_bounds({"period": "today", "start_date": "2026-12-25"}, date(2026, 11, 20))
 
+    def test_explicit_calendar_month_survives_missing_model_arguments(self):
+        q = "大沢の2026年12月のプラスチック収集日は？"
+        decide = Mock(side_effect=[
+            {"action": "search", "target": "collection_calendars", "district": "大沢",
+             "fiscal_year": 2026, "waste_types": ["plastic"]},
+            {"action": "answer", "sources": ["calendar-2026-osawa"]},
+        ])
+        result = run_turn(q, [], decide, today=date(2026, 11, 20))
+        self.assertIn("12月8日（火）", result.answer)
+        self.assertIn("12月25日（金）", result.answer)
+
     def test_ambiguous_location_is_not_narrowed_by_model(self):
         with self.assertRaises(AmbiguousDistrict):
             find_collection_days("山田1", 2026, date(2026, 11, 21), None, ["burnable"], wording=("北浜のごみの日",))

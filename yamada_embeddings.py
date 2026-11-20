@@ -342,6 +342,9 @@ def _hybrid(keyword, semantic, query):
     query = normalize(query)
     shared_ids = {record["id"] for record in keyword} & {record["id"] for record in semantic}
     result = [record for record in keyword if _strong_match(record, query)]
+    if not result:
+        # 強い文字一致がない質問では、意味検索の上位候補を先に残す。
+        result = semantic[:SEARCH_LIMIT - 1]
     seen_ids = {record["id"] for record in result}
     seen_urls = {record["url"] for record in result}
     remaining = []

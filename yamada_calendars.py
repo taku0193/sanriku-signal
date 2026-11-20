@@ -3,6 +3,7 @@
 import json
 import re
 import unicodedata
+from calendar import monthrange
 from datetime import date, timedelta
 from itertools import groupby
 from pathlib import Path
@@ -84,7 +85,25 @@ def resolve_district(district, year, wording):
     return matches[0] if matches else None
 
 
-def collection_bounds(decision, today):
+def explicit_collection_bounds(wording):
+    for phrase in wording:
+        phrase = unicodedata.normalize("NFKC", phrase)
+        dates = list(re.finditer(r"(?<![0-9])([0-9]{4})年\s*([0-9]{1,2})月(?:\s*の?\s*([0-9]{1,2})日)?", phrase))
+        if not dates:
+            continue
+        match = dates[0]
+        if len(dates) != 1 or re.match(r"\s*(?:から|まで|以降|以後|より|[〜~～])", phrase[match.end():]):
+            raise ValueError("指定期間の開始日と終了日が必要です。")
+        year, month, day = match.groups()
+        year, month = int(year), int(month)
+        if day:
+            value = date(year, month, int(day))
+            return value, value
+        return date(year, month, 1), date(year, month, monthrange(year, month)[1])
+    return None
+
+
+def collection_bounds(decision, today, *, wording=()):
     """モデルが指定した期間を日本時間の日付と西暦年度に揃える。"""
     has_dates = "start_date" in decision or "end_date" in decision
     period = decision.get("period", "period" if has_dates else "next")
@@ -93,7 +112,10 @@ def collection_bounds(decision, today):
     if has_dates and period != "period":
         raise ValueError("収集日の指定が競合しています。")
     start, end = today, None
-    if period == "next":
+    stated = explicit_collection_bounds(wording) if not has_dates and "period" not in decision else None
+    if stated:
+        start, end = stated
+    elif period == "next":
         start += timedelta(days=1)
     elif period in ("today", "tomorrow"):
         if period == "tomorrow":

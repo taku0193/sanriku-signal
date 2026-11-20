@@ -177,7 +177,7 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
                 if isinstance(district, str) and 0 < len(district.strip()) <= 80 and valid_types:
                     district = district.strip()
                     try:
-                        year, start, end = collection_bounds(decision, today)
+                        year, start, end = collection_bounds(decision, today, wording=wording)
                     except (KeyError, TypeError, ValueError, OverflowError):
                         pass
                     else:

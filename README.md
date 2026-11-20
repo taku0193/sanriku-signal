@@ -62,7 +62,7 @@ python3 -B evaluate_rag.py --mode react --output evaluation-results.json
 
 ## 言い換えに対応する検索を試す
 
-一般資料のキーワード検索に、EmbeddingGemmaによる意味の近さを使った検索を組み合わせられます。ローカルOllamaを起動し、このフォルダで以下を実行します。索引の初回作成には数分かかります。 [Ollamaの埋め込みAPI](https://docs.ollama.com/api/embed) · [EmbeddingGemma 2](https://ollama.com/library/embeddinggemma-2:270m)
+一般資料のキーワード検索に、EmbeddingGemmaによる意味の近さを使った検索を組み合わせられます。ローカルOllamaを起動し、このフォルダで以下を実行します。索引の初回作成にかかる時間は資料数と実行環境によります。 [Ollamaの埋め込みAPI](https://docs.ollama.com/api/embed) · [EmbeddingGemma 2](https://ollama.com/library/embeddinggemma-2:270m)
 
 ```bash
 ollama pull embeddinggemma-2:270m

@@ -60,6 +60,12 @@ class EmbeddingTests(unittest.TestCase):
         result = _hybrid(keyword, semantic, "鯨と海の科学館の大人の入館料と、受付締切を教えてください。")
         self.assertEqual([record["id"] for record in result[:2]], ["museum-fees", "museum-hours"])
 
+    def test_weak_keyword_matches_leave_room_for_semantic_candidates(self):
+        keyword = [self.documents[key] for key in ("museum-fees", "museum-hours", "museum-access")]
+        semantic = [self.documents[key] for key in ("oisuta-hours", "oversized-waste", "museum-hours")]
+        result = _hybrid(keyword, semantic, "袋に入らない家具の回収はいつまでに誰へ連絡しますか？")
+        self.assertIn("oversized-waste", [record["id"] for record in result])
+
     def test_evaluation_records_the_method_after_a_fallback(self):
         record = self.documents["museum-fees"]
         retriever = Mock(return_value=RetrievalResult([record], "keyword_fallback"))
