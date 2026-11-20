@@ -20,13 +20,16 @@ ASSETS = {
 WEB_DIR = Path(__file__).with_name("web")
 QUESTION_LIMIT = 400
 REQUEST_LIMIT = 16_384
+HISTORY_LIMIT = 2
+HISTORY_ANSWER_LIMIT = 700
+EVENT_TYPE = "application/x-ndjson"
 
 
-def read_text(value):
+def read_text(value, limit=QUESTION_LIMIT):
     if not isinstance(value, str):
         raise ValueError
     value = value.strip()
-    if not 0 < len(value) <= QUESTION_LIMIT:
+    if not 0 < len(value) <= limit:
         raise ValueError
     value.encode("utf-8")
     return value
@@ -48,6 +51,20 @@ def read_pending(value):
     if "district_hint" in value:
         pending["district_hint"] = read_text(value["district_hint"])
     return pending
+
+
+def read_history(value):
+    if not isinstance(value, list) or len(value) > HISTORY_LIMIT:
+        raise ValueError
+    history = []
+    for turn in value:
+        if not isinstance(turn, dict) or turn.keys() != {"question", "answer"}:
+            raise ValueError
+        history.append({
+            "question": read_text(turn["question"]),
+            "answer": read_text(turn["answer"], HISTORY_ANSWER_LIMIT),
+        })
+    return history
 
 
 def public_source(record):
@@ -119,14 +136,46 @@ class GuideHandler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error": f"質問は1〜{QUESTION_LIMIT}文字で入力してください。"})
         try:
             pending = read_pending(payload.get("pending"))
+            history = read_history(payload.get("history", []))
         except ValueError:
-            return self.send_json(400, {"error": "聞き返しの情報を読み取れませんでした。"})
+            return self.send_json(400, {"error": "会話の続きに必要な情報を読み取れませんでした。"})
 
+        accepted_types = self.headers.get("Accept", "").split(",")
+        if any(kind.split(";", 1)[0].strip() == EVENT_TYPE for kind in accepted_types):
+            return self.stream_answer(question, pending, history)
+        self.send_json(200, self.answer_question(question, pending, history))
+
+    def stream_answer(self, question, pending, history):
+        def send_event(event):
+            line = json.dumps(event, ensure_ascii=False) + "\n"
+            self.wfile.write(line.encode("utf-8"))
+            self.wfile.flush()
+
+        def progress(stage):
+            send_event({"type": "progress", "stage": stage})
+
+        self.send_response(200)
+        self.send_header("Content-Type", f"{EVENT_TYPE}; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        try:
+            self.end_headers()
+            result = self.answer_question(question, pending, history, on_progress=progress)
+            send_event({"type": "result", "data": result})
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+    def answer_question(self, question, pending, history, *, on_progress=None):
         mode, action, prompt, notice = "search", "search", "", ""
         next_pending = None
         if self.decide is not None:
             try:
-                result = run_turn(question, self.records, self.decide, pending=pending, retriever=self.retriever)
+                result = run_turn(
+                    question, self.records, self.decide, pending=pending, history=history,
+                    retriever=self.retriever, on_progress=on_progress,
+                )
                 mode = "ai"
                 action, answer, hits, next_pending = result.action, result.answer, result.sources, result.pending
             except RuntimeError:
@@ -136,12 +185,14 @@ class GuideHandler(BaseHTTPRequestHandler):
                     notice += "返答をもう一度送信すると、続きから再試行できます。"
 
         if mode == "search":
+            if on_progress:
+                on_progress("searching")
             search_query = f"{pending['question']}\n{question}" if pending else question
             hits = search(self.records, search_query) if self.retriever is None else self.retriever(search_query).records
             answer = "" if hits else NO_EVIDENCE
             prompt = format_prompt(search_query, hits) if hits else ""
 
-        self.send_json(200, {
+        return {
             "mode": mode,
             "action": action,
             "pending": next_pending,
@@ -149,7 +200,7 @@ class GuideHandler(BaseHTTPRequestHandler):
             "notice": notice,
             "sources": [public_source(record) for record in hits],
             "prompt": prompt,
-        })
+        }
 
 
 def main():

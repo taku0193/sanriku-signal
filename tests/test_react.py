@@ -5,10 +5,29 @@ from unittest.mock import Mock, patch
 from yamada_calendars import AmbiguousDistrict, collection_bounds, find_collection_calendar, find_collection_days
 from yamada_rag import load_records, search
 from yamada_react import asks_collection_date, run_turn
-from yamada_web import public_source
+from yamada_web import public_source, read_history
 
 
 class ReactTests(unittest.TestCase):
+    def test_history_resolves_references_but_only_search_results_can_be_cited(self):
+        history = read_history([{"question": "科学館の料金は？", "answer": "大人300円です。"}])
+        events = []
+        states = []
+
+        def decide(state, *, actions):
+            states.append((state["history"], actions))
+            if len(states) == 1:
+                return {"action": "search", "target": "official_documents", "query": "科学館 開館時間"}
+            return {"action": "answer", "answer": "17時です。", "sources": ["past-source"]}
+
+        with patch("yamada_react.search", return_value=[{"id": "current-source", "text": "17時まで"}]):
+            result = run_turn("そこは何時まで？", [], decide, history=history, on_progress=events.append)
+        self.assertEqual(states[0][0], history)
+        self.assertNotIn("answer", states[0][1])
+        self.assertEqual(events, ["planning", "searching", "reviewing"])
+        self.assertEqual(result.action, "insufficient")
+        self.assertEqual(result.sources, [])
+
     def test_district_clarification_precedes_search_and_resumes(self):
         events = []
         clarify = Mock(return_value={"action": "clarify", "field": "district", "answer": "どの地区ですか？"})

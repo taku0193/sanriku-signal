@@ -20,6 +20,10 @@ MAX_DECISIONS = 3
 TARGETS = ("official_documents", "collection_calendars")
 TYPE_GUIDE = "\n".join(f"  {key} は {label}" for key, label in COLLECTION_TYPES.items())
 NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。"
+HISTORY_INSTRUCTIONS = (
+    "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、"
+    "回答の根拠は今回の observations に限定します。"
+)
 INSTRUCTIONS = f"""{ANSWER_INSTRUCTIONS}
 あなたは質問、聞き返しへの返答、検索の観察を読み、次の行動を一つ選びます。
 入力の question は最初に尋ねられたことです。follow_up があれば、聞き返しに対する利用者の返答です。
@@ -87,8 +91,9 @@ def make_react_decider(model):
             "required": ["action"],
             "additionalProperties": False,
         }
+        instructions = f"{INSTRUCTIONS}\n\n{HISTORY_INSTRUCTIONS}" if state.get("history") else INSTRUCTIONS
         messages = [
-            {"role": "system", "content": INSTRUCTIONS},
+            {"role": "system", "content": instructions},
             {"role": "user", "content": json.dumps(state, ensure_ascii=False)},
         ]
         return chat_json(opener, model, messages, schema, context=6144, response_tokens=448)
@@ -107,7 +112,8 @@ def asks_collection_date(text):
     return bool(waste and timing)
 
 
-def run_turn(question, records, decide, *, pending=None, on_action=None, today=None, retriever=None):
+def run_turn(question, records, decide, *, pending=None, history=(), on_action=None, on_progress=None,
+             today=None, retriever=None):
     today = today or datetime.now(ZoneInfo("Asia/Tokyo")).date()
     fiscal_year = today.year if today.month >= 4 else today.year - 1
     state = {
@@ -116,6 +122,8 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
         "current_fiscal_year": fiscal_year,
         "observations": [],
     }
+    if history:
+        state["history"] = history
     hint = pending.get("district_hint") if pending else None
     reply = f"{hint}{question}" if hint and re.match(r"^[0-9]+区", normalize(question)) else question
     if pending:
@@ -149,6 +157,8 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
         if remaining:
             actions.append("search")
         state["remaining_searches"] = remaining
+        if on_progress:
+            on_progress("reviewing" if state["observations"] else "planning")
         decision = decide(state, actions=actions)
         action = decision.get("action")
         if action not in actions:
@@ -195,6 +205,8 @@ def run_turn(question, records, decide, *, pending=None, on_action=None, today=N
                     passages, retrieval = previous[key]
                     event["status"] = "reused"
                 else:
+                    if on_progress:
+                        on_progress("searching")
                     searches += 1
                     try:
                         passages, retrieval = lookup()

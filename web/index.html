@@ -2,97 +2,89 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="岩手県山田町の観光、交通、くらしを、町や地域の団体・事業者の資料から調べる案内です。">
-    <meta name="theme-color" content="#f5f7f3">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="description" content="岩手県山田町の観光、交通、くらしを、地域の資料から調べる案内です。">
+    <meta name="theme-color" content="#edf4f1">
     <title>やまだ案内 | 岩手県山田町の観光とくらし</title>
     <link rel="stylesheet" href="/style.css">
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <header class="masthead">
-      <div class="wrap masthead-inner">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <div><strong>やまだ案内</strong><small>岩手県山田町</small></div>
+    <div class="app">
+      <header class="site-header">
+        <div class="wide header-inner">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <div><strong>やまだ案内</strong><small>岩手県山田町</small></div>
+          </div>
+          <div class="header-actions">
+            <p id="mode" class="mode" hidden></p>
+            <button id="new-chat" type="button" class="new-chat" hidden>
+              <span class="plus" aria-hidden="true"></span>新しい会話
+            </button>
+          </div>
         </div>
-        <p id="mode" class="mode" hidden></p>
-      </div>
-    </header>
+      </header>
 
-    <main class="wrap">
-      <section class="hero" aria-labelledby="page-title">
-        <div class="hero-copy">
-          <h1 id="page-title">山田町のことを、<br>聞いてみる。</h1>
-          <p>岩手県山田町の観光、交通、くらしの情報を、出典付きで調べられます。</p>
-        </div>
-        <figure>
-          <img src="/yamada-bay.webp" width="1200" height="900" alt="山田湾の向こうに山が連なる山田港の風景">
-          <figcaption>山田湾・山田港</figcaption>
-        </figure>
-      </section>
-
-      <div class="workspace">
-        <div class="primary">
-          <form id="question-form" class="panel composer">
-            <label id="question-label" for="question" class="panel-title" aria-live="polite">質問する</label>
-            <p id="previous-question" class="result-question" hidden></p>
-            <textarea id="question" name="question" rows="3" maxlength="400" required
-              placeholder="例　鯨と海の科学館は何時まで開いていますか？"></textarea>
-            <div class="form-actions">
-              <span id="shortcut" class="shortcut" aria-hidden="true">Ctrl / ⌘ + Enter</span>
-              <button id="new-question" type="button" class="secondary-button" hidden>別の質問</button>
-              <button type="submit" id="submit" class="primary-button">
-                <span class="search-icon" aria-hidden="true"></span><span id="submit-label">資料を検索</span>
-              </button>
+      <main class="guide">
+        <div id="scroll-region" class="scroll-region">
+          <section id="welcome" class="welcome wide" aria-labelledby="page-title">
+            <div class="welcome-copy">
+              <h1 id="page-title">山田町のことを、<br>聞いてみる。</h1>
+              <p>観光や交通、くらしの疑問に、<br class="desktop-break">地域の資料をもとにお答えします。</p>
             </div>
-            <p id="status" class="status" role="status" hidden></p>
-            <p id="error" class="error" role="alert" hidden></p>
-            <noscript><p class="error">質問するには、ブラウザーでJavaScriptを有効にしてください。</p></noscript>
-          </form>
-
-          <section id="results" class="panel results" aria-labelledby="result-title" hidden>
-            <div class="result-heading">
-              <h2 id="result-title" class="panel-title" tabindex="-1">検索結果</h2>
-              <button id="copy" type="button" class="secondary-button" hidden>AIに渡す内容をコピー</button>
-            </div>
-            <p id="result-question" class="result-question"></p>
-            <p id="notice" class="notice" hidden></p>
-            <p id="answer" class="answer" hidden></p>
-            <div id="sources" class="sources"></div>
-            <label id="copy-fallback" class="copy-fallback" hidden>
-              コピー用の質問と資料
-              <textarea id="prompt-text" rows="6" readonly></textarea>
-            </label>
-            <p id="copy-status" class="status" role="status" hidden></p>
+            <figure class="place">
+              <img src="/yamada-bay.webp" width="1200" height="900" alt="山田湾の向こうに山が連なる山田港の風景">
+              <figcaption>
+                <span>山田湾・山田港</span>
+                <span class="credit"><a href="https://commons.wikimedia.org/wiki/File:Port_yamada_20130601.JPG" target="_blank" rel="noopener">Opqr</a> /
+                  <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a></span>
+              </figcaption>
+            </figure>
           </section>
+          <section id="conversation" class="conversation content" aria-label="会話" hidden></section>
         </div>
 
-        <aside class="panel examples" aria-labelledby="examples-title">
-          <h2 id="examples-title" class="panel-title">質問例</h2>
-          <section class="example-group" aria-labelledby="tourism-title">
-            <h3 id="tourism-title" class="category tourism">観光</h3>
-            <ul>
-              <li><button type="button" class="example">鯨と海の科学館の入館料は？</button></li>
-              <li><button type="button" class="example">道の駅やまだは何時まで開いてる？</button></li>
-              <li><button type="button" class="example">織笠駅に駐車場はありますか？</button></li>
-            </ul>
-          </section>
-          <section class="example-group" aria-labelledby="life-title">
-            <h3 id="life-title" class="category life">くらし</h3>
-            <ul>
-              <li><button type="button" class="example">ペットボトルのふたはどう出す？</button></li>
-              <li><button type="button" class="example">粗大ごみの収集はどう予約する？</button></li>
-              <li><button type="button" class="example">山田郵便局のATMは土曜日何時まで？</button></li>
-            </ul>
-          </section>
-        </aside>
-      </div>
-    </main>
-
-    <footer class="wrap footer">
-      <p>公式資料を参照する学習用の試作です。<a href="https://www.town.yamada.iwate.jp/" target="_blank" rel="noopener">山田町公式サイト</a></p>
-      <p>写真　<a href="https://commons.wikimedia.org/wiki/File:Port_yamada_20130601.JPG" target="_blank" rel="noopener">Opqr / Wikimedia Commons</a>、2013年・縮小表示。<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a></p>
-    </footer>
+        <div class="composer-area">
+          <div class="dock-inner wide">
+            <div class="dock-intro">
+              <h2>質問してみる</h2>
+              <p>施設の営業時間、ごみの収集日、<br class="desktop-break">町での手続きなど。</p>
+            </div>
+            <div class="dock-main">
+              <form id="question-form" class="composer">
+                <label class="visually-hidden" for="question">山田町について質問する</label>
+                <div id="follow-up" class="follow-up" hidden>
+                  <span>地区の確認に返信</span>
+                  <button id="skip-follow-up" class="quiet-button" type="button">別の質問へ</button>
+                </div>
+                <div class="input-row">
+                  <textarea id="question" name="question" rows="1" maxlength="400" required
+                    placeholder="山田町について質問する"></textarea>
+                  <button id="submit" class="send-button" type="submit" aria-label="質問を送信" title="質問を送信" disabled>
+                    <span class="send-icon" aria-hidden="true"></span>
+                  </button>
+                  <button id="stop" class="send-button stop-button" type="button" aria-label="応答の表示を停止" title="応答の表示を停止" hidden>
+                    <span class="stop-icon" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <p id="form-error" class="form-error" role="alert" hidden></p>
+                <noscript><p class="form-error">質問するにはJavaScriptを有効にしてください。</p></noscript>
+              </form>
+              <div class="examples" aria-label="質問例">
+                <button class="example" type="button" data-question="鯨と海の科学館の大人の入館料は？">科学館の入館料</button>
+                <button class="example" type="button" data-question="大沢のプラスチックの収集日は？">ごみの収集日</button>
+                <button class="example" type="button" data-question="道の駅やまだは何時まで開いてる？">道の駅の営業時間</button>
+                <button class="example" type="button" data-question="粗大ごみの収集はどう予約する？">粗大ごみの予約</button>
+              </div>
+              <p class="composer-foot">
+                <span>学習用の試作です。最新情報は出典をご確認ください。</span>
+                <a href="https://www.town.yamada.iwate.jp/" target="_blank" rel="noopener">山田町公式サイト <span aria-hidden="true">↗</span></a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   </body>
 </html>

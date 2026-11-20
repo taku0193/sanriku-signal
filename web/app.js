@@ -1,194 +1,378 @@
 "use strict";
 
+const app = document.querySelector(".app");
 const form = document.querySelector("#question-form");
 const question = document.querySelector("#question");
-const questionLabel = document.querySelector("#question-label");
-const previousQuestion = document.querySelector("#previous-question");
-const shortcut = document.querySelector("#shortcut");
-const newQuestion = document.querySelector("#new-question");
 const submit = document.querySelector("#submit");
-const submitLabel = document.querySelector("#submit-label");
+const stop = document.querySelector("#stop");
+const newChat = document.querySelector("#new-chat");
 const mode = document.querySelector("#mode");
-const status = document.querySelector("#status");
-const error = document.querySelector("#error");
-const results = document.querySelector("#results");
-const resultTitle = document.querySelector("#result-title");
-const resultQuestion = document.querySelector("#result-question");
-const notice = document.querySelector("#notice");
-const answer = document.querySelector("#answer");
-const sources = document.querySelector("#sources");
-const copy = document.querySelector("#copy");
-const copyStatus = document.querySelector("#copy-status");
-const copyFallback = document.querySelector("#copy-fallback");
-const promptText = document.querySelector("#prompt-text");
-const examples = [...document.querySelectorAll(".example")];
+const followUp = document.querySelector("#follow-up");
+const skipFollowUp = document.querySelector("#skip-follow-up");
+const formError = document.querySelector("#form-error");
+const welcome = document.querySelector("#welcome");
+const conversation = document.querySelector("#conversation");
+const scrollRegion = document.querySelector("#scroll-region");
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
-const originalPlaceholder = question.placeholder;
-let aiEnabled = false;
-let pending = null;
+const eventType = "application/x-ndjson";
+const progressLabels = {
+  planning: "質問を確認しています…",
+  searching: "山田町の資料を探しています…",
+  reviewing: "資料を確認して回答をまとめています…",
+};
 
-function showText(element, value) {
-  element.textContent = value;
-  element.hidden = !value;
+let pending = null;
+let recentTurns = [];
+let active = null;
+
+function element(tag, className, content) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (content) node.textContent = content;
+  return node;
 }
 
-function setPending(nextPending) {
-  pending = nextPending;
-  questionLabel.textContent = pending ? pending.prompt : "質問する";
-  question.placeholder = pending ? "例　大沢" : originalPlaceholder;
-  showText(previousQuestion, pending ? `元の質問　${pending.question}` : "");
-  if (pending) question.setAttribute("aria-describedby", previousQuestion.id);
-  else question.removeAttribute("aria-describedby");
-  shortcut.hidden = Boolean(pending);
-  newQuestion.hidden = !pending;
-  if (pending) submitLabel.textContent = "返答を送信";
-  else submitLabel.textContent = aiEnabled ? "AIに質問" : "資料を検索";
+function showText(node, content) {
+  node.textContent = content;
+  node.hidden = !content;
+}
+
+function bottomIsVisible() {
+  return scrollRegion.scrollHeight - scrollRegion.scrollTop - scrollRegion.clientHeight < 80;
+}
+
+function scrollToBottom() {
+  scrollRegion.scrollTop = scrollRegion.scrollHeight;
+}
+
+function updateComposer() {
+  question.style.height = "";
+  question.style.height = `${Math.min(question.scrollHeight, 144)}px`;
+  question.placeholder = pending ? "地区名や目印を入力する" : "山田町について質問する";
+  followUp.hidden = !pending;
+  skipFollowUp.disabled = Boolean(active);
+  submit.hidden = Boolean(active);
+  submit.disabled = !question.value.trim();
+  stop.hidden = !active;
+}
+
+function appendInline(parent, text) {
+  const pattern = /\*\*([^*\n]+)\*\*|`([^`\n]+)`|\*([^*\n]+)\*/g;
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    parent.append(text.slice(offset, match.index));
+    const [, bold, code, italic] = match;
+    parent.append(element(bold ? "strong" : code ? "code" : "em", "", bold || code || italic));
+    offset = match.index + match[0].length;
+  }
+  parent.append(text.slice(offset));
+}
+
+function formatAnswer(body, text) {
+  let paragraph = [];
+  let list = null;
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    const node = element("p");
+    appendInline(node, paragraph.join("\n"));
+    body.append(node);
+    paragraph = [];
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    const heading = line.match(/^\s*#{1,6}\s+(.+)$/);
+    const bullet = line.match(/^\s*(?:([-+*])\s+|(・)\s*|(\d+)[.)]\s+)(.+)$/);
+    if (heading || bullet || !line.trim()) flushParagraph();
+    if (bullet) {
+      const tag = bullet[3] ? "ol" : "ul";
+      if (list?.localName !== tag) {
+        list = element(tag);
+        if (tag === "ol") list.start = Number(bullet[3]);
+        body.append(list);
+      }
+      const item = element("li");
+      appendInline(item, bullet[4]);
+      list.append(item);
+    } else {
+      list = null;
+      if (heading) {
+        const title = element("h3");
+        appendInline(title, heading[1]);
+        body.append(title);
+      } else if (line.trim()) {
+        paragraph.push(line);
+      }
+    }
+  }
+  flushParagraph();
 }
 
 function sourceCard(record) {
-  const card = document.createElement("article");
-  card.className = "source";
-
-  const category = document.createElement("span");
-  category.className = record.category === "観光" ? "category tourism" : "category life";
-  category.textContent = record.category;
-
-  const title = document.createElement("h3");
-  title.textContent = record.title;
-
-  const excerpt = document.createElement("p");
-  excerpt.textContent = record.text;
-
-  const metadata = document.createElement("p");
-  metadata.className = "source-meta";
+  const card = element("article", "source");
+  const title = element("h3", "", record.title);
+  const provenance = element("p", "source-detail");
+  let sourceLink = null;
   if (record.url) {
-    const link = document.createElement("a");
-    link.href = record.url;
-    link.target = "_blank";
-    link.rel = "noopener";
-    link.textContent = record.source;
-    metadata.append(link);
-  } else {
-    metadata.append(record.source);
+    try {
+      const url = new URL(record.url);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        sourceLink = element("a", "", record.source);
+        sourceLink.href = url.href;
+        sourceLink.target = "_blank";
+        sourceLink.rel = "noopener";
+      }
+    } catch {
+      // 出典名はブラウザーが開けるURLがない場合にも表示する。
+    }
   }
-  const published = record.published ? `掲載日 ${record.published} / ` : "";
-  metadata.append(`（${published}確認日 ${record.checked}）`);
-
-  card.append(category, title);
-  if (record.text) card.append(excerpt);
-  card.append(metadata);
+  provenance.append(sourceLink || record.source);
+  if (record.published) provenance.append(` · 掲載日 ${record.published}`);
+  if (record.checked) provenance.append(` · 確認日 ${record.checked}`);
+  card.append(title);
+  if (record.text) {
+    const excerpt = record.text.replace(/\n\s*\|\s*\n/g, " ").replace(/\s+/g, " ").trim();
+    card.append(element("p", "source-excerpt", excerpt));
+  }
+  card.append(provenance);
   return card;
 }
 
-function renderResult(query, data) {
-  resultTitle.textContent = "検索結果";
-  if (data.mode === "ai") {
-    resultTitle.textContent = data.action === "insufficient" ? "確認できなかったこと" : "AIの回答";
+function attachSources(row, records, showSources) {
+  if (!records.length) return;
+  const sources = element("details", "sources");
+  sources.open = showSources;
+  const cards = element("div", "sources-list");
+  cards.append(...records.map(sourceCard));
+  sources.append(element("summary", "", `出典 ${records.length} 件`), cards);
+  row.append(sources);
+}
+
+function attachCopy(row, text, label) {
+  if (!text) return;
+  const actions = element("div", "message-tools");
+  const button = element("button", "quiet-button", label);
+  button.type = "button";
+  const feedback = element("span", "copy-status");
+  feedback.setAttribute("role", "status");
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      feedback.textContent = "コピーしました";
+    } catch {
+      let copyField = row.querySelector(".copy-field");
+      if (!copyField) {
+        copyField = element("textarea", "copy-field");
+        copyField.readOnly = true;
+        copyField.rows = 3;
+        copyField.setAttribute("aria-label", "コピーする内容");
+        row.append(copyField);
+      }
+      copyField.value = text;
+      copyField.focus();
+      copyField.select();
+      feedback.textContent = "選択した内容をコピーしてください";
+    }
+  });
+  actions.append(button, feedback);
+  row.append(actions);
+}
+
+function createTurn(query) {
+  const turn = element("article", "turn");
+  const userMessage = element("p", "user-message", query);
+  userMessage.setAttribute("aria-label", "あなたの質問");
+  const guideMessage = element("div", "guide-message");
+  const mark = element("span", "guide-mark");
+  mark.setAttribute("aria-hidden", "true");
+  const row = element("div", "message-main");
+  const title = element("h2", "message-label", "やまだ案内");
+  title.tabIndex = -1;
+  const body = element("div", "message-content");
+  body.setAttribute("aria-live", "polite");
+  const status = element("p", "message-status");
+  const pulse = element("span", "pulse");
+  pulse.setAttribute("aria-hidden", "true");
+  const progress = element("span", "", progressLabels.planning);
+  status.append(pulse, progress);
+  body.append(status);
+  row.append(title, body);
+  guideMessage.append(mark, row);
+  turn.append(userMessage, guideMessage);
+  conversation.append(turn);
+  conversation.hidden = false;
+  welcome.hidden = true;
+  newChat.hidden = false;
+  app.classList.add("in-conversation");
+  scrollToBottom();
+  return { row, title, body, progress };
+}
+
+function displayResult(view, result) {
+  view.body.replaceChildren();
+  if (result.notice) view.body.append(element("p", "notice", result.notice));
+  if (result.answer) formatAnswer(view.body, result.answer);
+  if (result.mode === "search" && !result.answer) {
+    view.body.append(element("p", "", "質問に関連する資料が見つかりました。"));
   }
-  resultQuestion.textContent = query;
-  showText(answer, data.answer);
-  showText(notice, data.notice || "");
-  sources.replaceChildren(...data.sources.map(sourceCard));
-  promptText.value = data.prompt;
-  copy.hidden = !data.prompt;
-  copyFallback.hidden = true;
-  showText(copyStatus, "");
-  results.hidden = false;
-  resultTitle.focus({ preventScroll: true });
-  resultTitle.scrollIntoView({ block: "nearest" });
+  attachSources(view.row, result.sources, result.mode === "search");
+  if (result.mode === "ai") {
+    attachCopy(view.row, result.answer, "回答をコピー");
+  } else {
+    attachCopy(view.row, result.prompt, "質問と資料をコピー");
+  }
+}
+
+async function readEvents(response, onProgress) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "progress") onProgress(event.stage);
+        if (event.type === "result") return event.data;
+      }
+      if (done) throw new Error("応答が途中で途切れました。もう一度お試しください。");
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+async function ask(query, currentPending, signal, onProgress) {
+  if (offlineSearch) return offlineSearch(query);
+  const response = await fetch("/api/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: eventType },
+    body: JSON.stringify({ question: query, pending: currentPending, history: recentTurns }),
+    signal,
+  });
+  if (response.ok && response.headers.get("Content-Type")?.includes(eventType)) {
+    return readEvents(response, onProgress);
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "質問を送信できませんでした。");
+  return data;
+}
+
+function displayFailure(view, query, message, stopped) {
+  const notice = element("p", stopped ? "stopped" : "message-error", message);
+  notice.setAttribute("role", stopped ? "status" : "alert");
+  view.body.replaceChildren(notice);
+  const restore = element("button", "quiet-button", "質問を入力欄に戻す");
+  restore.type = "button";
+  restore.addEventListener("click", () => {
+    question.value = query;
+    updateComposer();
+    question.focus();
+  });
+  view.row.append(restore);
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (submit.disabled) return;
+  if (active) return;
   const query = question.value.trim();
   if (!query) {
-    showText(error, pending ? "地区名を入力してください。" : "質問を入力してください。");
+    showText(formError, pending ? "地区名を入力してください。" : "質問を入力してください。");
     question.focus();
     return;
   }
 
   const currentPending = pending;
-  let focusQuestion = false;
-  submit.disabled = true;
-  question.readOnly = true;
-  newQuestion.disabled = true;
-  examples.forEach((example) => { example.disabled = true; });
-  results.hidden = true;
-  showText(error, "");
-  showText(status, aiEnabled ? "AIが確認しています…" : "公式資料を検索しています…");
-
-  try {
-    if (offlineSearch) {
-      renderResult(query, offlineSearch(query));
-      return;
-    }
-    const response = await fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: query, pending: currentPending }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showText(error, data.error || "検索できませんでした。もう一度お試しください。");
-      return;
-    }
-    setPending(data.pending ?? null);
-    if (data.action === "clarify") {
-      question.value = "";
-      focusQuestion = true;
-      return;
-    }
-    if (currentPending && !pending) question.value = "";
-    renderResult(currentPending?.question ?? query, data);
-  } catch {
-    showText(error, offlineSearch
-      ? "資料を検索できませんでした。ページを開き直してください。"
-      : "ローカルサーバーに接続できませんでした。起動状況を確認してください。");
-  } finally {
-    submit.disabled = false;
-    question.readOnly = false;
-    newQuestion.disabled = false;
-    examples.forEach((example) => { example.disabled = false; });
-    showText(status, "");
-    if (focusQuestion) question.focus();
-  }
-});
-
-question.addEventListener("keydown", (event) => {
-  if (!event.isComposing && event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
-    form.requestSubmit();
-  }
-});
-
-newQuestion.addEventListener("click", () => {
-  setPending(null);
+  const fromExample = document.activeElement.classList.contains("example");
+  const controller = new AbortController();
+  active = controller;
   question.value = "";
-  results.hidden = true;
-  showText(error, "");
+  showText(formError, "");
+  updateComposer();
+  const view = createTurn(query);
+  if (fromExample) view.title.focus({ preventScroll: true });
+  try {
+    const result = await ask(query, currentPending, controller.signal, (stage) => {
+      const atBottom = bottomIsVisible();
+      if (progressLabels[stage]) view.progress.textContent = progressLabels[stage];
+      if (atBottom) scrollToBottom();
+    });
+    if (active !== controller) return;
+
+    const atBottom = bottomIsVisible();
+    displayResult(view, result);
+    pending = result.pending ?? null;
+    if (result.mode === "ai" && result.action === "answer") {
+      recentTurns = [...recentTurns, {
+        question: currentPending?.question ?? query,
+        answer: [...result.answer].slice(0, 700).join(""),
+      }].slice(-2);
+    }
+    if (atBottom) scrollToBottom();
+  } catch (error) {
+    if (active !== controller) return;
+    const atBottom = bottomIsVisible();
+    const stopped = controller.signal.aborted;
+    const message = stopped ? "応答の表示を停止しました。" : error instanceof TypeError
+      ? "サーバーに接続できませんでした。接続を確認して、もう一度お試しください。"
+      : error.message;
+    displayFailure(view, query, message, stopped);
+    if (atBottom) scrollToBottom();
+  } finally {
+    if (active === controller) {
+      active = null;
+      updateComposer();
+    }
+  }
+});
+
+question.addEventListener("input", () => {
+  showText(formError, "");
+  updateComposer();
+});
+question.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.isComposing || event.keyCode === 229 || event.shiftKey) return;
+  event.preventDefault();
+  if (!active && question.value.trim()) form.requestSubmit();
+});
+
+newChat.addEventListener("click", () => {
+  active?.abort();
+  active = null;
+  pending = null;
+  recentTurns = [];
+  conversation.replaceChildren();
+  conversation.hidden = true;
+  welcome.hidden = false;
+  newChat.hidden = true;
+  app.classList.remove("in-conversation");
+  question.value = "";
+  showText(formError, "");
+  scrollRegion.scrollTop = 0;
+  updateComposer();
   question.focus();
 });
 
-for (const example of examples) {
+skipFollowUp.addEventListener("click", () => {
+  pending = null;
+  showText(formError, "");
+  updateComposer();
+  question.focus();
+});
+stop.addEventListener("click", () => active?.abort());
+
+for (const example of document.querySelectorAll(".example")) {
   example.addEventListener("click", () => {
-    if (pending) setPending(null);
-    question.value = example.textContent.trim();
+    question.value = example.dataset.question;
+    updateComposer();
     form.requestSubmit();
   });
 }
-
-copy.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(promptText.value);
-    showText(copyStatus, "質問と根拠資料をコピーしました。チャットに貼って使えます。");
-  } catch {
-    copyFallback.hidden = false;
-    promptText.select();
-    showText(copyStatus, "選択したテキストをコピーして、チャットに貼ってください。");
-  }
-});
 
 async function loadSettings() {
   if (offlineSearch) {
@@ -199,12 +383,11 @@ async function loadSettings() {
     const response = await fetch("/api/settings");
     if (!response.ok) return;
     const settings = await response.json();
-    aiEnabled = settings.ai;
-    showText(mode, aiEnabled ? "AI回答モード" : "資料検索モード");
-    setPending(pending);
+    showText(mode, settings.ai ? "AI回答モード" : "資料検索モード");
   } catch {
-    // 検索時のエラーはフォーム内に表示する。
+    // 質問を送れない場合は会話欄に表示する。
   }
 }
 
+updateComposer();
 loadSettings();
