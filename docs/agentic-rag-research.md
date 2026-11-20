@@ -129,6 +129,8 @@ RTX 3090 Tiで科学館の開館時間・休館日・入館料をまとめて尋
 
 `npm ci` から型チェックとビルドを実行し、Chromeで入口と会話の遷移、再読み込み、生成中の停止、出典・写真・コピー、ごみ収集日の聞き返しを確認した。単体HTMLの資料検索と写真表示も確認した。
 
+GitHubは各言語のバイト数から比率を計算する。動画や資料を埋め込んだ単体HTMLと、ReactをまとめたJavaScriptを `.gitattributes` で生成物に指定し、言語集計から除外した。 [GitHubの生成ファイル設定](https://docs.github.com/en/repositories/working-with-files/managing-files/customizing-how-changed-files-appear-on-github)
+
 ## 利用者の条件に沿った案内
 
 資料9,234件の状態で4問を確認した。雨の日の親子のお出かけでは、空き家物件を起点にした距離が案内に混ざった。粗大ごみの質問では、申込期限と電話番号は示せたが、平日の電話が難しい人が使える持込み方法まで案内できなかった。
