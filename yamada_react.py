@@ -31,14 +31,19 @@ JSON_STRING_PREFIX = re.compile(r'(?:[^"\\\x00-\x1f]|\\(?:["\\/bfnrt]|u[0-9a-fA-
 INSTRUCTIONS = f"""{ANSWER_INSTRUCTIONS}
 あなたは質問、聞き返しへの返答、検索の観察を読み、次の行動を一つ選びます。
 入力の question は最初に尋ねられたことです。follow_up があれば、聞き返しに対する利用者の返答です。
-observations は、あなたが指定した検索の結果です。回答に必要な事実がそろったら、追加検索せず回答してください。
+observations は、あなたが指定した検索の結果です。利用者が次に何をしたいかを把握し、同行者、移動手段、使える時間など、
+利用者が挙げた条件のうち案内を左右するものも確認してください。
 
 - 検索する場合は action=search。施設・制度・観光などは target=official_documents を選び、
   query に施設名や品目と知りたい項目を入れます。複数の項目がある質問では、まず必要な施設名や品目を一緒に入れます。
   例えば「AとBはどちらが遅く閉まる？」の検索語は「A B 通常の閉館時間」です。
-  missing_fact にその検索で確認したい項目を短く記録します。
+  missing_fact は画面に表示する短い項目名です。個人情報は入れず、「駅から行ける屋内施設」のように書きます。
+  最初の結果で重要な条件や質問の一部が確認できず、探せる情報なら remaining_searches の範囲で検索します。
+  検索語を不足項目に絞ります。例えば受付方法が利用者の都合に合わない場合は、別の方法や使える時間を探します。
+  必要な事実がそろった時点で回答します。
 - 個別地区のごみ収集日や日程表の質問では地区名が必要です。元の質問と返答から地区が分からなければ
   action=clarify、field=district とし、町内の地区名を尋ねる短い質問を answer に入れます。
+  ごみの申し込み方法や締切を確認する場合は official_documents を検索します。
   地区が分かれば target=collection_calendars、district に地区名を指定します。年度の指定があるときだけ
   fiscal_year に西暦の年度を入れます（令和8年度は2026）。元の質問で指定されたごみの種類を、返答が地区名だけでも引き継ぎます。
   waste_types は質問された区分のキーの配列です。種類の指定がなければ空配列で全区分を照合します。
@@ -51,14 +56,23 @@ observations は、あなたが指定した検索の結果です。回答に必�
   収集日と別の質問が同時にある場合は、そちらの根拠も探し、other_answer に収集日以外への回答を書きます。
   日付を確認できる資料がなければ、確認できないと答えます。日程表のURLへの案内は回答に含めません。
 - 回答する場合は action=answer、answer に日本語の回答、sources に根拠に使った資料IDを入れます。
+  「です・ます」で、利用者がまず知りたい結論から答えます。おすすめは条件に合う候補を選び、理由と利用方法を短く伝えます。
+  おすすめを尋ねられたときは、条件に最も合う一案に絞ります。複数案や比較を求められた場合は、施設ごとに情報を整理します。
+  雨の日の親子のお出かけなら、駅との位置関係や子どもができることを伝えます。用件に関係のない窓口時間や設備は省きます。
+  手続きで制約があるなら、通常の手順と、確認できた代わりの方法を条件付きで案内します。単純な料金などは短く答えます。
+  一部に根拠があれば action=answer とし、確認できた事実と確認できない点を伝えます。
+  訪問前に未確認の点があれば、連絡先とそこで尋ねる内容を案内します。距離、隣接、設備は、資料がその施設について述べた範囲で伝えます。
+  利用日が示されていなければ今日行くと仮定しません。通常の開館時間を伝える場合は曜日ごとの案内にします。
   駅名から施設を特定して閉館時刻を比べるなら、駅と施設の関係を示す資料IDと、比較する双方の時刻を示す資料IDを入れます。
   同じ発信元のページでも、根拠に使った箇所が別々の資料IDならそれぞれ入れます。
   URLはアプリが表示するため answer には入れません。
-- 根拠を確認できず、有効な検索手段もなければ action=insufficient。分からないことを answer に短く書きます。
-  日付指定の混雑状況のような、収録資料から確認できない情報は推測しません。
+- 答えられる部分がなく、有効な検索手段もなければ action=insufficient。何を確認できなかったか短く書きます。
+  日付指定の混雑状況などの例は「明日の混雑状況は、手元の資料では確認できません。」です。無関係な出典は挙げません。
 
 答えられる可能性があり observations が空なら、検索するか、地区が足りなければ聞き返してください。
 既に観察した検索条件をそのまま再指定せず、不足項目に合う条件に変更します。
+「行けるところはありますか」のように行き先を尋ねられたら、最も条件に合う場所、そこへ行きやすい理由、そこでできることの3点を案内します。
+営業時間、休館日、今日の営業状況は、利用する日時や営業時間について尋ねられたときだけ答えます。
 action に必要な項目だけ出力してください。"""
 
 
@@ -155,11 +169,15 @@ def make_react_decider(model):
     return decide
 
 
+def asks_reservation_deadline(text):
+    return bool(re.search(r"申[し込]|予約|受付", text) and re.search(r"(?:何日|いつ|何時)まで", text))
+
+
 def asks_collection_date(text):
     text = normalize(text)
     if re.search(r"収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日", text):
         return True
-    if re.search(r"申[し込]|予約|受付", text) and re.search(r"(?:何日|いつ|何時)まで", text):
+    if asks_reservation_deadline(text):
         return False
     waste = re.search(r"ごみ|ぺっとぼとる|空き?びん|乾電池|ぷら|[段だん]ぼーる|缶|新聞|紙ぱっく|蛍光[管灯]|水銀", text)
     timing = re.search(r"今日|明日|次回|次の|何日|何曜日|[0-9]+月|いつ(?!までに)", text)
@@ -184,6 +202,7 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
         state["follow_up"] = {"asked": pending["prompt"], "reply": reply}
     wording = (reply, pending["question"]) if pending else (question,)
     calendar_question = asks_collection_date("\n".join(wording))
+    reservation_only = not calendar_question and asks_reservation_deadline(normalize(state["question"]))
 
     def clarify_district(prompt, district_hint=None):
         next_pending = {
@@ -203,8 +222,9 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
     previous = {}
     ambiguity = None
     searches = 0
+    search_detail = None
     for step in range(MAX_DECISIONS):
-        actions = ["clarify", "insufficient"]
+        actions = ["insufficient"] if reservation_only else ["clarify", "insufficient"]
         if evidence:
             actions.append("answer")
         remaining = min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1)
@@ -212,7 +232,7 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
             actions.append("search")
         state["remaining_searches"] = remaining
         if on_progress:
-            on_progress("reviewing" if state["observations"] else "planning")
+            on_progress("reviewing" if state["observations"] else "planning", detail=search_detail)
         if on_delta is not None and evidence and not calendar_question:
             decision = decide(state, actions=actions, on_content=stream_grounded_answer(evidence, on_delta))
         else:
@@ -262,8 +282,9 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
                     passages, retrieval = previous[key]
                     event["status"] = "reused"
                 else:
+                    search_detail = " ".join(event.get("missing_fact", "").split())[:60] or None
                     if on_progress:
-                        on_progress("searching")
+                        on_progress("searching", detail=search_detail)
                     searches += 1
                     try:
                         passages, retrieval = lookup()

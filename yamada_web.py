@@ -154,8 +154,11 @@ class GuideHandler(BaseHTTPRequestHandler):
             self.wfile.write(line.encode("utf-8"))
             self.wfile.flush()
 
-        def progress(stage):
-            send_event({"type": "progress", "stage": stage})
+        def progress(stage, *, detail=None):
+            event = {"type": "progress", "stage": stage}
+            if detail:
+                event["detail"] = detail
+            send_event(event)
 
         def delta(text):
             send_event({"type": "delta", "text": text})

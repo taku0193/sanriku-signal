@@ -170,7 +170,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     if (before.width && before.height) previousComposer.current = before;
   }
 
-  function updateTurn(id: number, change: Partial<Pick<Turn, "stage" | "preview" | "result" | "failure">>) {
+  function updateTurn(id: number, change: Partial<Pick<Turn, "stage" | "searchDetail" | "preview" | "result" | "failure">>) {
     scrollAfterRender.current = bottomIsVisible() ? "bottom" : "keep";
     setTurns((current) => current.map((turn) => turn.id === id ? { ...turn, ...change } : turn));
   }
@@ -245,7 +245,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
           if (event.type === "progress") {
             cancelPreviewFrame();
             partial = "";
-            updateTurn(id, { stage: event.stage, preview: "" });
+            updateTurn(id, { stage: event.stage, searchDetail: event.detail, preview: "" });
           } else {
             partial += event.text;
             if (frame === undefined) {

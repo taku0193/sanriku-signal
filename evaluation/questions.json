@@ -105,5 +105,40 @@
       "museum-fees": "https://yamada-kujirakan.jp/facility/",
       "pet-bottles": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
     }
+  },
+  {
+    "id": "rainy-day-with-child",
+    "category": "観光",
+    "question": "小学生の子どもと雨の日に出かけたいです。陸中山田駅から車なしで行けるところはありますか？",
+    "expected_answer": "陸中山田駅に隣接するはぴねを挙げ、児童図書コーナーでできることを伝える。質問に利用日の指定はない。",
+    "required_patterns": ["はぴね", "陸中山田駅.{0,30}(?:隣|すぐそば)|(?:隣接|すぐ隣)", "児童図書|読書|本を読"],
+    "forbidden_patterns": ["本日|今日は|(?:650|800)\\s*(?:m|メートル)", "(?:どちら|両(?:方|施設|館)).{0,28}火曜|はぴね.{0,14}休館日.{0,8}火曜", "駅(?:舎)?の隣には?「?まちなか交流センター"],
+    "required_sources": {
+      "md-hapine-family": "https://www.town.yamada.iwate.jp/docs/247.html",
+      "santetsu-rikuchuyamada": "https://www.sanrikutetsudou.com/駅情報/陸中山田駅/"
+    }
+  },
+  {
+    "id": "museum-wheelchair-visit",
+    "category": "観光",
+    "question": "祖母と鯨と海の科学館に行きたいです。祖母は車いすを使います。館内に入れますか？ 大人の入館料も知りたいです。",
+    "expected_answer": "大人300円、多目的トイレあり。車いすでの入館や展示室までの移動は確認できていないため、科学館の問い合わせ先を示す。",
+    "required_patterns": ["300\\s*円", "多目的トイレ", "0193-84-3985", "記載(?:が|は|されて)(?:資料には)?(?:ない|ありませ|ございませ)|確認でき(?:ていません|ません|ていない)|分かりません"],
+    "forbidden_patterns": ["車[いイ]すで(?:の)?(?:入館|見学)(?:が|は)?できます|車[いイ]すでも安心"],
+    "required_sources": {
+      "museum-fees": "https://yamada-kujirakan.jp/facility/",
+      "md-museum-visitor-facilities": "https://yamada-kujirakan.jp/facility/"
+    }
+  },
+  {
+    "id": "oversized-waste-without-weekday-call",
+    "category": "くらし",
+    "question": "仕事で平日に電話しづらいです。山田町の粗大ごみはいつまでに、どう申し込めばいいですか？",
+    "expected_answer": "収集月20日までに芳賀清掃社へ予約する手順と、自分で運べる場合は土曜も宮古清掃センターへ直接持ち込めることを案内する。",
+    "required_patterns": ["収集(?:する)?(?:月|される月|がある月)", "20\\s*日", "芳賀清掃社", "宮古清掃センター", "土曜", "持ち?込"],
+    "required_sources": {
+      "oversized-waste": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1",
+      "waste-dropoff": "https://www.town.yamada.iwate.jp/docs/1272.html"
+    }
   }
 ]

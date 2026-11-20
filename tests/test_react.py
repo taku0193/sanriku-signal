@@ -48,14 +48,17 @@ class ReactTests(unittest.TestCase):
         def decide(state, *, actions):
             states.append((state["history"], actions))
             if len(states) == 1:
-                return {"action": "search", "target": "official_documents", "query": "科学館 開館時間"}
+                return {"action": "search", "target": "official_documents", "query": "科学館 開館時間",
+                        "missing_fact": "科学館の\n開館時間"}
             return {"action": "answer", "answer": "17時です。", "sources": ["past-source"]}
 
         with patch("yamada_react.search", return_value=[{"id": "current-source", "text": "17時まで"}]):
-            result = run_turn("そこは何時まで？", [], decide, history=history, on_progress=events.append)
+            result = run_turn("そこは何時まで？", [], decide, history=history,
+                              on_progress=lambda stage, *, detail: events.append((stage, detail)))
         self.assertEqual(states[0][0], history)
         self.assertNotIn("answer", states[0][1])
-        self.assertEqual(events, ["planning", "searching", "reviewing"])
+        self.assertEqual(events, [("planning", None), ("searching", "科学館の 開館時間"),
+                                  ("reviewing", "科学館の 開館時間")])
         self.assertEqual(result.action, "insufficient")
         self.assertEqual(result.sources, [])
 
@@ -86,6 +89,16 @@ class ReactTests(unittest.TestCase):
         self.assertNotIn("url", public_source(second.sources[0]))
         self.assertEqual(continuation.call_args.args[0]["question"], "うちの地区のごみ収集日は？")
         self.assertEqual(continuation.call_args.args[0]["follow_up"]["reply"], "大沢です。")
+
+    def test_reservation_deadline_does_not_offer_district_clarification(self):
+        decide = Mock(side_effect=[
+            {"action": "search", "target": "official_documents", "query": "粗大ごみ 予約"},
+            {"action": "answer", "answer": "収集月の20日までです。", "sources": ["oversized-waste"]},
+        ])
+        result = run_turn("粗大ごみはいつまでに申し込めばいいですか？", load_records(include_imported=False), decide)
+        self.assertEqual(result.action, "answer")
+        for call in decide.call_args_list:
+            self.assertNotIn("clarify", call.kwargs["actions"])
 
     def test_reuses_previous_search_and_rejects_unseen_source(self):
         events = []

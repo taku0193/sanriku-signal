@@ -26,6 +26,10 @@ interface ChatTurnProps {
 
 export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
   const result = turn.result;
+  const { stage, searchDetail } = turn;
+  let progressLabel = progressLabels[stage];
+  if (searchDetail && stage === "searching") progressLabel = `「${searchDetail}」の資料を探しています…`;
+  if (searchDetail && stage === "reviewing") progressLabel = `「${searchDetail}」の資料を確認しています…`;
   const sources = result?.sources ?? [];
   const photos = result?.photos ?? [];
   const copyText = result?.mode === "ai" ? result.answer : result?.prompt ?? "";
@@ -84,7 +88,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
               <>
                 <p className="message-status">
                   <span className="activity-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-                  <span key={turn.stage} className="progress-caption">{progressLabels[turn.stage]}</span>
+                  <span key={progressLabel} className="progress-caption">{progressLabel}</span>
                 </p>
                 <p className="streaming-answer" aria-hidden="true" hidden={!turn.preview}>{turn.preview}</p>
               </>

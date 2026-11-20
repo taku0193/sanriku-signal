@@ -53,7 +53,7 @@ export interface GuideResult {
 export type ProgressStage = "planning" | "searching" | "reviewing" | "generating";
 
 export type ProgressEvent =
-  | { type: "progress"; stage: ProgressStage }
+  | { type: "progress"; stage: ProgressStage; detail?: string }
   | { type: "delta"; text: string };
 
 export type StreamEvent = ProgressEvent | { type: "result"; data: GuideResult };
@@ -62,6 +62,7 @@ export interface Turn {
   id: number;
   question: string;
   stage: ProgressStage;
+  searchDetail?: string;
   preview: string;
   result: GuideResult | null;
   failure: { message: string; stopped: boolean; partial: string } | null;
