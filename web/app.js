@@ -48,7 +48,8 @@ function sourceCard(record) {
   link.target = "_blank";
   link.rel = "noopener";
   link.textContent = record.source;
-  metadata.append(link, `（確認日 ${record.checked}）`);
+  const published = record.published ? `掲載日 ${record.published} / ` : "";
+  metadata.append(link, `（${published}確認日 ${record.checked}）`);
 
   card.append(category, title, excerpt, metadata);
   return card;

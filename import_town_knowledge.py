@@ -1,4 +1,4 @@
-"""山田町の記事一覧から公式HTML本文を取り込み、ローカル資料を更新する。"""
+"""山田町と山田町観光協会の公開記事を取り込み、ローカル資料を更新する。"""
 
 import argparse
 import json
@@ -19,10 +19,19 @@ from zoneinfo import ZoneInfo
 
 
 ORIGIN = "https://www.town.yamada.iwate.jp"
+TOURISM_ORIGIN = "https://www.yamada-kankou.jp"
 OUTPUT = Path(__file__).with_name("town_articles.json")
+TOURISM_OUTPUT = OUTPUT.with_name("tourism_articles.json")
 USER_AGENT = "YamadaGuide/1.0 (public-document indexing)"
 ARTICLE = re.compile(r"/docs/([A-Za-z0-9_-]+)\.html")
 INDEX = re.compile(r"/docs/(?:index\.p[0-9]+\.html)?")
+TOURISM_INDEXES = ("/spots/", "/facilities/", "/accommodations/")
+TOURISM_ARTICLE = re.compile(r"/(?:spots|facilities|accommodations)/[a-zA-Z0-9_-]+/")
+TOURISM_SECTIONS = {
+    "/specialty/": ("section", {"specialty1", "specialty2", "specialty3"}),
+    "/shiokaze-trail/": ("section", {"item_block"}),
+    "/wonderful-taiken/": ("div", {"chatch-block"}),
+}
 CATEGORIES = {
     "kurashi": "くらし・手続き", "kanko": "観光", "jigyosha": "事業者向け", "chousei": "町政情報",
 }
@@ -30,23 +39,27 @@ HEADINGS = {"h2", "h3", "h4", "h5", "h6"}
 BREAKS = {"br", "p", "li", "dt", "dd", "div", "tr", "caption"}
 
 
-def town_url(url):
-    parts = urlsplit(urljoin(ORIGIN, url))
-    if parts.scheme != "https" or parts.netloc != "www.town.yamada.iwate.jp":
+def source_url(url, origin):
+    parts = urlsplit(urljoin(origin, url))
+    if parts.scheme != "https" or parts.netloc != urlsplit(origin).netloc:
         return None
-    return ORIGIN + parts.path
+    return origin + parts.path
 
 
 class LocalRedirect(HTTPRedirectHandler):
+    def __init__(self, origin):
+        self.origin = origin
+
     def redirect_request(self, request, fp, code, msg, headers, new_url):
-        if town_url(new_url) is None:
-            raise HTTPError(request.full_url, code, "町公式サイト外への転送", headers, fp)
+        if source_url(new_url, self.origin) is None:
+            raise HTTPError(request.full_url, code, "取得対象サイト外への転送", headers, fp)
         return super().redirect_request(request, fp, code, msg, headers, new_url)
 
 
 class ArticleIndex(HTMLParser):
-    def __init__(self):
+    def __init__(self, origin=ORIGIN):
         super().__init__()
+        self.origin = origin
         self.inside_main = False
         self.articles = []
         self.next_page = None
@@ -57,10 +70,14 @@ class ArticleIndex(HTMLParser):
         if not self.inside_main or tag != "a":
             return
         attrs = dict(pairs)
-        url = town_url(attrs.get("href") or "")
+        url = source_url(attrs.get("href") or "", self.origin)
         if url is None:
             return
         path = urlsplit(url).path
+        if self.origin == TOURISM_ORIGIN:
+            if TOURISM_ARTICLE.fullmatch(path):
+                self.articles.append(url)
+            return
         match = ARTICLE.fullmatch(path)
         if match and match[1] != "index":
             self.articles.append(url)
@@ -73,9 +90,11 @@ class ArticleIndex(HTMLParser):
 
 
 class ArticleBody(HTMLParser):
-    def __init__(self):
+    def __init__(self, tourism_section=None):
         super().__init__()
-        self.category = "町公式サイト"
+        self.tourism_section = tourism_section
+        self.body_tag = tourism_section[0] if tourism_section else "article"
+        self.category = "観光" if tourism_section else "町公式サイト"
         self.title = ""
         self.read_title = False
         self.date = ""
@@ -97,16 +116,20 @@ class ArticleBody(HTMLParser):
     def handle_starttag(self, tag, pairs):
         attrs = dict(pairs)
         classes = (attrs.get("class") or "").split()
-        if tag == "body":
+        if tag == "meta" and self.tourism_section and attrs.get("property") == "og:title":
+            self.title = (attrs.get("content") or "").partition("|")[0].strip()
+        if tag == "body" and not self.tourism_section:
             for key, category in CATEGORIES.items():
                 if f"body--{key}" in classes:
                     self.category = category
-        if tag == "h1" and "pagetitle" in classes:
+        if tag == "h1" and "pagetitle" in classes and not self.tourism_section:
             self.read_title = True
         if tag == "time" and not self.date:
             self.date = attrs.get("datetime") or ""
-        if tag == "article" and ("body" in classes or self.body_depth):
-            self.body_depth += 1
+        if tag == self.body_tag:
+            is_body = attrs.get("id") in self.tourism_section[1] if self.tourism_section else "body" in classes
+            if is_body or self.body_depth:
+                self.body_depth += 1
         if not self.body_depth or self.ignore:
             return
         if tag in {"script", "style", "iframe"}:
@@ -130,7 +153,7 @@ class ArticleBody(HTMLParser):
             self.heading = " ".join("".join(self.buffer).split())
             self.buffer.clear()
             self.read_heading = None
-        elif tag == "article":
+        elif tag == self.body_tag:
             self.flush()
             self.body_depth -= 1
         elif tag in BREAKS and not self.read_heading:
@@ -151,7 +174,7 @@ def passages(sections):
         for paragraph in paragraphs:
             for start in range(0, len(paragraph), 650):
                 part = paragraph[start:start + 650]
-                if chunk and len(chunk) + len(part) > 720:
+                if chunk and len(chunk) + len(part) + 1 > 720:
                     yield heading, chunk
                     chunk = ""
                 chunk = f"{chunk}\n{part}" if chunk else part
@@ -162,12 +185,16 @@ def passages(sections):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, help="確認用に取得する記事数を指定します。")
-    parser.add_argument("--output", type=Path, default=OUTPUT, help="取り込みデータの保存先です。")
+    parser.add_argument("--source", choices=("town", "tourism"), default="town", help="取り込み元です。")
+    parser.add_argument("--output", type=Path, help="取り込みデータの保存先です。")
     args = parser.parse_args()
     if args.limit is not None and args.limit < 1:
         parser.error("--limit は1以上を指定してください。")
 
-    opener = build_opener(LocalRedirect())
+    tourism = args.source == "tourism"
+    origin = TOURISM_ORIGIN if tourism else ORIGIN
+    output = args.output or (TOURISM_OUTPUT if tourism else OUTPUT)
+    opener = build_opener(LocalRedirect(origin))
     lock = Lock()
     next_request = 0.0
 
@@ -185,35 +212,44 @@ def main():
 
     robots = RobotFileParser()
     try:
-        robots.parse(fetch(ORIGIN + "/robots.txt").splitlines())
-        page, visited, urls = ORIGIN + "/docs/", set(), {}
-        while page and page not in visited and robots.can_fetch(USER_AGENT, page):
+        robots.parse(fetch(origin + "/robots.txt").splitlines())
+        paths = TOURISM_INDEXES if tourism else ("/docs/",)
+        pages = [origin + path for path in paths]
+        visited = set()
+        urls = dict.fromkeys(origin + path for path in TOURISM_SECTIONS) if tourism else {}
+        for page in pages:
+            if page in visited or not robots.can_fetch(USER_AGENT, page):
+                continue
             visited.add(page)
-            index = ArticleIndex()
+            index = ArticleIndex(origin)
             index.feed(fetch(page))
             urls.update(dict.fromkeys(index.articles))
-            page = index.next_page
+            if index.next_page:
+                pages.append(index.next_page)
     except (OSError, HTTPException, ValueError) as error:
         parser.exit(1, f"記事一覧を取得できませんでした。 {error}\n")
     candidates = [url for url in urls if robots.can_fetch(USER_AGENT, url)][:args.limit]
     if not candidates:
         parser.exit(1, "記事一覧から記事が見つかりませんでした。\n")
-    print(f"公式記事一覧 {len(visited)}ページ・{len(candidates)}記事を確認", flush=True)
+    print(f"記事一覧 {len(visited)}ページ・{len(candidates)}記事を確認", flush=True)
     checked = datetime.now(ZoneInfo("Asia/Tokyo")).date().isoformat()
 
     def read_article(url):
         try:
-            body = ArticleBody()
+            path = urlsplit(url).path
+            section = TOURISM_SECTIONS.get(path, ("section", {"list-detail-block"})) if tourism else None
+            body = ArticleBody(section)
             body.feed(fetch(url))
             title = " ".join(body.title.split())
-            slug = ARTICLE.fullmatch(urlsplit(url).path)[1]
+            slug = path.strip("/").replace("/", "-") if tourism else ARTICLE.fullmatch(path)[1]
             records = [
-                {"id": f"town-{slug}-{index}", "title": title, "heading": heading, "text": text}
+                {"id": f"{args.source}-{slug}-{index}", "title": title, "heading": heading, "text": text}
                 for index, (heading, text) in enumerate(passages(body.sections), 1)
             ]
             if title and records:
                 return {
-                    "category": body.category, "source": title, "url": url, "checked": checked,
+                    "category": body.category, "source": f"山田町観光協会「{title}」" if tourism else title,
+                    "url": url, "checked": checked,
                     "published": body.date, "records": records,
                 }, None
             return None, "見出しまたは本文を検出できませんでした。"
@@ -232,13 +268,13 @@ def main():
     if not documents:
         parser.exit(1, "本文を取得できる記事がありませんでした。\n")
     with NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=args.output.parent, prefix=args.output.stem + ".", suffix=".tmp", delete=False,
+        mode="w", encoding="utf-8", dir=output.parent, prefix=output.stem + ".", suffix=".tmp", delete=False,
     ) as handle:
         temporary = Path(handle.name)
         try:
             json.dump({"documents": documents, "skipped": skipped}, handle, ensure_ascii=False)
             handle.close()
-            temporary.replace(args.output)
+            temporary.replace(output)
         finally:
             temporary.unlink(missing_ok=True)
     print(f"{len(documents)}記事・{sum(len(doc['records']) for doc in documents)}件の本文を保存。取得対象外・取得失敗 {len(skipped)}記事。")

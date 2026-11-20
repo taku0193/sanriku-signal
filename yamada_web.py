@@ -94,7 +94,8 @@ class GuideHandler(BaseHTTPRequestHandler):
             "answer": answer,
             "notice": notice,
             "sources": [
-                {key: record[key] for key in ("category", "title", "text", "source", "url", "checked")}
+                {key: record[key] for key in ("category", "title", "text", "source", "url", "checked", "published")
+                 if key in record}
                 for record in hits
             ],
             "prompt": prompt,

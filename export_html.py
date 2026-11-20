@@ -13,7 +13,7 @@ WEB = FOLDER / "web"
 
 def embedded_data():
     return json.dumps({
-        "records": load_records(include_town=False),
+        "records": load_records(include_imported=False),
         "limit": SEARCH_LIMIT,
         "instructions": ANSWER_INSTRUCTIONS,
         "noEvidence": NO_EVIDENCE,
