@@ -69,14 +69,29 @@
     "expected_answer": "地区名を聞き返し、町の地区別日程表を案内する。具体的な収集日は推測しない。",
     "required_patterns": ["(?:地区|地域).{0,25}(?:教えて|お知らせくださ|どちらですか|どこですか|お伺い)|(?:どの|どちらの)(?:地区|地域).{0,18}(?:ですか|でしょうか)"],
     "forbidden_patterns": ["[0-9]{1,2}月[0-9]{1,2}日|(?:月|火|水|木|金|土|日)曜|(?:毎週|隔週)"],
-    "required_sources": {"collection-calendar": "https://www.town.yamada.iwate.jp/docs/8354.html"}
+    "required_sources": {"collection-calendar": "https://www.town.yamada.iwate.jp/docs/8354.html"},
+    "react": {
+      "action": "clarify",
+      "first_action": "clarify",
+      "expected_answer": "検索する前に、町内の地区名を尋ねる。",
+      "required_sources": {},
+      "follow_up": {
+        "question": "大沢です。令和8年度のものを見たいです。",
+        "expected_answer": "大沢の令和8年度の日程表PDFを示し、収集日や曜日は断定しない。",
+        "required_patterns": ["大沢", "2026年度|令和8年度", "日程表"],
+        "forbidden_patterns": ["[0-9]{1,2}月[0-9]{1,2}日|(?:月|火|水|木|金|土|日)曜|(?:毎週|隔週)"],
+        "required_sources": {
+          "calendar-2026-osawa": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf"
+        }
+      }
+    }
   },
   {
     "id": "tomorrow-crowd-unknown",
     "category": "観光",
     "question": "明日の道の駅やまだは混んでいますか？",
     "expected_answer": "収録した資料では明日の混雑を確認できないと伝える。混雑を予測せず、根拠として関係のない資料を挙げない。",
-    "required_patterns": ["(?:根拠|混雑|資料).{0,45}(?:確認できません|分かりません|わかりません|記載されていません|不明です)"],
+    "required_patterns": ["(?:根拠|混雑|資料).{0,45}(?:確認(?:することが)?できません|分かりません|わかりません|記載されていません|不明です)"],
     "required_sources": {}
   },
   {

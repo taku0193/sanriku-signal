@@ -15,10 +15,11 @@ def find_collection_calendar(district: str, fiscal_year: int) -> list[dict]:
 
     district = unicodedata.normalize("NFKC", district).strip().removesuffix("地区")
     records = json.loads(_CALENDARS_PATH.read_text(encoding="utf-8"))
-    return [
+    matches = [
         record
         for record in records
-        if record.get("district") == district
-        and type(record.get("fiscal_year")) is int
+        if type(record.get("fiscal_year")) is int
         and record["fiscal_year"] == fiscal_year
+        and (record["district"] == district or district in record.get("aliases", []))
     ]
+    return matches if len(matches) == 1 else []

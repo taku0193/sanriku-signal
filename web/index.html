@@ -35,11 +35,13 @@
       <div class="workspace">
         <div class="primary">
           <form id="question-form" class="panel composer">
-            <label for="question" class="panel-title">質問する</label>
+            <label id="question-label" for="question" class="panel-title" aria-live="polite">質問する</label>
+            <p id="previous-question" class="result-question" hidden></p>
             <textarea id="question" name="question" rows="3" maxlength="400" required
               placeholder="例　鯨と海の科学館は何時まで開いていますか？"></textarea>
             <div class="form-actions">
-              <span class="shortcut" aria-hidden="true">Ctrl / ⌘ + Enter</span>
+              <span id="shortcut" class="shortcut" aria-hidden="true">Ctrl / ⌘ + Enter</span>
+              <button id="new-question" type="button" class="secondary-button" hidden>別の質問</button>
               <button type="submit" id="submit" class="primary-button">
                 <span class="search-icon" aria-hidden="true"></span><span id="submit-label">資料を検索</span>
               </button>

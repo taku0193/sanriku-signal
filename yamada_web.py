@@ -7,9 +7,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from yamada_rag import (
-    DEFAULT_OLLAMA_MODEL, NO_EVIDENCE, answer_question, format_prompt, load_records, make_ollama_decider, search,
-)
+from yamada_rag import DEFAULT_OLLAMA_MODEL, NO_EVIDENCE, format_prompt, load_records, search
+from yamada_react import make_react_decider, run_turn
 
 
 ASSETS = {
@@ -20,6 +19,31 @@ ASSETS = {
 }
 WEB_DIR = Path(__file__).with_name("web")
 QUESTION_LIMIT = 400
+REQUEST_LIMIT = 16_384
+
+
+def read_text(value):
+    if not isinstance(value, str):
+        raise ValueError
+    value = value.strip()
+    if not 0 < len(value) <= QUESTION_LIMIT:
+        raise ValueError
+    value.encode("utf-8")
+    return value
+
+
+def read_pending(value):
+    if value is None:
+        return None
+    if not isinstance(value, dict) or value.keys() != {"question", "field", "prompt"}:
+        raise ValueError
+    if value["field"] != "district":
+        raise ValueError
+    return {
+        "question": read_text(value["question"]),
+        "field": "district",
+        "prompt": read_text(value["prompt"]),
+    }
 
 
 class GuideHandler(BaseHTTPRequestHandler):
@@ -65,32 +89,46 @@ class GuideHandler(BaseHTTPRequestHandler):
 
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 8192:
+            if not 0 < length <= REQUEST_LIMIT:
                 raise ValueError
             payload = json.loads(self.rfile.read(length))
-        except ValueError:
+        except (RecursionError, ValueError):
             return self.send_json(400, {"error": "質問を読み取れませんでした。"})
 
-        question = payload.get("question") if isinstance(payload, dict) else None
-        if not isinstance(question, str) or not 0 < len(question.strip()) <= QUESTION_LIMIT:
+        if not isinstance(payload, dict):
+            return self.send_json(400, {"error": "質問を読み取れませんでした。"})
+        try:
+            question = read_text(payload.get("question"))
+        except ValueError:
             return self.send_json(400, {"error": f"質問は1〜{QUESTION_LIMIT}文字で入力してください。"})
-        question = question.strip()
+        try:
+            pending = read_pending(payload.get("pending"))
+        except ValueError:
+            return self.send_json(400, {"error": "聞き返しの情報を読み取れませんでした。"})
 
-        mode, prompt, notice = "search", "", ""
+        mode, action, prompt, notice = "search", "search", "", ""
+        next_pending = None
         if self.decide is not None:
             try:
-                answer, hits = answer_question(question, self.records, self.decide)
+                result = run_turn(question, self.records, self.decide, pending=pending)
                 mode = "ai"
+                action, answer, hits, next_pending = result.action, result.answer, result.sources, result.pending
             except RuntimeError:
                 notice = "AIに接続できませんでした。公式資料の検索結果を表示しています。"
+                if pending is not None:
+                    next_pending = pending
+                    notice += "返答をもう一度送信すると、続きから再試行できます。"
 
         if mode == "search":
-            hits = search(self.records, question)
+            search_query = f"{pending['question']}\n{question}" if pending else question
+            hits = search(self.records, search_query)
             answer = "" if hits else NO_EVIDENCE
-            prompt = format_prompt(question, hits) if hits else ""
+            prompt = format_prompt(search_query, hits) if hits else ""
 
         self.send_json(200, {
             "mode": mode,
+            "action": action,
+            "pending": next_pending,
             "answer": answer,
             "notice": notice,
             "sources": [
@@ -111,7 +149,7 @@ def main():
     )
     args = parser.parse_args()
     records = load_records()
-    decide = make_ollama_decider(args.model, catalog=records) if args.model else None
+    decide = make_react_decider(args.model) if args.model else None
     handler = partial(GuideHandler, records=records, decide=decide)
 
     try:

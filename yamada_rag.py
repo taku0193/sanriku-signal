@@ -7,9 +7,11 @@ import re
 import sys
 import unicodedata
 from collections import Counter
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
 
@@ -26,6 +28,36 @@ ANSWER_INSTRUCTIONS = """岩手県山田町の案内係として日本語で答�
 一部しか分からないときは、確認できた事実と不足している点を伝えてください。"""
 
 
+def load_markdown(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        end = lines.index("---", 1)
+        if lines[0] != "---":
+            raise ValueError
+        metadata = {}
+        for line in lines[1:end]:
+            key, separator, value = line.partition(":")
+            if not separator or key in metadata or not value.strip():
+                raise ValueError
+            metadata[key] = value.strip()
+        fields = {"title", "category", "source", "url", "checked", "keywords", "topics"}
+        text = "\n".join(lines[end + 1:]).strip()
+        if metadata.keys() != fields or not text:
+            raise ValueError
+        url = urlsplit(metadata["url"])
+        if url.scheme != "https" or not url.hostname:
+            raise ValueError
+        date.fromisoformat(metadata["checked"])
+        for key in ("keywords", "topics"):
+            values = [word.strip() for word in metadata[key].split(",")]
+            if not all(values):
+                raise ValueError
+            metadata[key] = values
+    except ValueError as error:
+        raise ValueError(f"{path.name} の資料情報または本文の形式を確認してください。") from error
+    return {**metadata, "id": f"md-{path.stem}", "text": text}
+
+
 def load_records(*, include_imported=True):
     path = Path(__file__).with_name("sources.json")
     documents = json.loads(path.read_text(encoding="utf-8"))
@@ -33,6 +65,7 @@ def load_records(*, include_imported=True):
     for document in documents:
         metadata = {key: document[key] for key in ("category", "source", "url", "checked")}
         records.extend({**metadata, **record} for record in document["records"])
+    records.extend(load_markdown(file) for file in sorted(path.with_name("knowledge").glob("*.md")))
     for filename in ("town_articles.json", "tourism_articles.json") if include_imported else ():
         imported_path = path.with_name(filename)
         if not imported_path.is_file():
@@ -141,6 +174,33 @@ def format_prompt(question, records):
     )
 
 
+def chat_json(opener, model, messages, schema, *, context=4096, response_tokens=512):
+    payload = {
+        "model": model, "messages": messages, "stream": False, "format": schema,
+        "options": {"temperature": 0},
+    }
+    if model == DEFAULT_OLLAMA_MODEL:
+        payload["think"] = False
+        payload["options"].update(num_ctx=context, num_predict=response_tokens)
+    request = Request(
+        OLLAMA_URL,
+        headers={"Content-Type": "application/json"},
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+    )
+    try:
+        with opener.open(request, timeout=120) as response:
+            decision = json.loads(json.load(response)["message"]["content"])
+        if not isinstance(decision, dict):
+            raise ValueError("Expected a JSON object")
+        return decision
+    except HTTPError as error:
+        raise RuntimeError(f"OllamaがHTTP {error.code}を返しました。ollama list でモデル名を確認してください。") from error
+    except (URLError, TimeoutError) as error:
+        raise RuntimeError("Ollamaへの接続が完了しませんでした。起動状況を確認してください。") from error
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError("Ollamaの応答を読み取れませんでした。") from error
+
+
 def make_ollama_decider(model, *, catalog=()):
     opener = build_opener(ProxyHandler({}))
     searchable_titles = []
@@ -193,38 +253,10 @@ def make_ollama_decider(model, *, catalog=()):
         }
         if can_search and searchable_titles:
             model_input["searchable_titles"] = searchable_titles
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": json.dumps(model_input, ensure_ascii=False)},
-            ],
-            "stream": False,
-            "format": schema,
-            "options": {"temperature": 0},
-        }
-        if model == DEFAULT_OLLAMA_MODEL:
-            # この試作の短い資料と回答に合わせ、推論時のメモリと生成時間を抑える。
-            payload["think"] = False
-            payload["options"].update(num_ctx=4096, num_predict=512)
-
-        request = Request(
-            OLLAMA_URL,
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        )
-        try:
-            with opener.open(request, timeout=120) as response:
-                decision = json.loads(json.load(response)["message"]["content"])
-            if not isinstance(decision, dict):
-                raise ValueError("Expected a JSON object")
-            return decision
-        except HTTPError as error:
-            raise RuntimeError(f"OllamaがHTTP {error.code}を返しました。ollama list でモデル名を確認してください。") from error
-        except (URLError, TimeoutError) as error:
-            raise RuntimeError("Ollamaへの接続が完了しませんでした。起動状況を確認してください。") from error
-        except (KeyError, TypeError, ValueError) as error:
-            raise RuntimeError("Ollamaの応答を読み取れませんでした。") from error
+        return chat_json(opener, model, [
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": json.dumps(model_input, ensure_ascii=False)},
+        ], schema)
 
     return decide
 
@@ -252,14 +284,18 @@ def answer_question(question, records, decide, *, baseline=False, trace=False, o
         return NO_EVIDENCE, []
 
     answer = decision.get("answer")
-    citations = decision.get("sources")
-    if not isinstance(answer, str) or not answer.strip() or not isinstance(citations, list) or not citations:
+    citations = cited_records(decision, evidence)
+    if not isinstance(answer, str) or not answer.strip() or not citations:
         return NO_EVIDENCE, []
-    if any(not isinstance(citation, str) or citation not in evidence for citation in citations):
-        return NO_EVIDENCE, []
+    return answer.strip(), citations
 
+
+def cited_records(decision, evidence):
     # 表示するURLはモデルの出力から作らず、検索で取得した資料から引く。
-    return answer.strip(), [evidence[citation] for citation in dict.fromkeys(citations)]
+    ids = decision.get("sources")
+    if not isinstance(ids, list) or any(not isinstance(id_, str) or id_ not in evidence for id_ in ids):
+        return []
+    return [evidence[id_] for id_ in dict.fromkeys(ids)]
 
 
 def main():
@@ -272,7 +308,7 @@ def main():
         help=f"ローカルOllamaで回答します。モデル名を省略すると {DEFAULT_OLLAMA_MODEL} を使います。",
     )
     parser.add_argument("--baseline", action="store_true", help="初回検索だけで回答します（--model 用）。")
-    parser.add_argument("--trace", action="store_true", help="AIモードで検索語と資料IDを表示します。")
+    parser.add_argument("--trace", action="store_true", help="AIモードで行動と検索結果を表示します。")
     args = parser.parse_args()
     question = args.question.strip()
     if not question:
@@ -282,11 +318,22 @@ def main():
 
     try:
         records = load_records()
-        if args.model:
+        if args.model and args.baseline:
             answer, citations = answer_question(
                 question, records, make_ollama_decider(args.model, catalog=records),
-                baseline=args.baseline, trace=args.trace,
+                baseline=True, trace=args.trace,
             )
+        elif args.model:
+            from yamada_react import make_react_decider, run_turn
+
+            def trace_action(event):
+                print(json.dumps(event, ensure_ascii=False), file=sys.stderr)
+
+            result = run_turn(
+                question, records, make_react_decider(args.model), on_action=trace_action if args.trace else None,
+            )
+            answer, citations = result.answer, result.sources
+        if args.model:
             print(answer)
             for record in citations:
                 print(f"\n出典　{record['title']}（確認日 {record['checked']}）\n{record['url']}")

@@ -8,7 +8,10 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/8/5/_/00_2026arakawa.pdf",
     "checked": "2026-11-20",
     "district": "荒川",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "羽々の下(荒川寄り)"
+    ]
   },
   {
     "id": "calendar-2026-toyomane-1",
@@ -19,7 +22,11 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/8/4/_/00_2026toyomane1.pdf",
     "checked": "2026-11-20",
     "district": "豊間根1",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "八千代",
+      "勝山"
+    ]
   },
   {
     "id": "calendar-2026-toyomane-2",
@@ -30,7 +37,15 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/8/3/_/00_2026toyomane2.pdf",
     "checked": "2026-11-20",
     "district": "豊間根2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "新田",
+      "上豊間根",
+      "長内",
+      "嶋田",
+      "繋",
+      "田名部"
+    ]
   },
   {
     "id": "calendar-2026-toyomane-3",
@@ -41,7 +56,14 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/8/2/_/00_2026toyomane3.pdf",
     "checked": "2026-11-20",
     "district": "豊間根3",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "稲荷ヶ下",
+      "白山",
+      "桜野",
+      "石峠",
+      "羽々の下(石峠寄り)"
+    ]
   },
   {
     "id": "calendar-2026-osawa",
@@ -52,7 +74,24 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf",
     "checked": "2026-11-20",
     "district": "大沢",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "大沢1区",
+      "大沢2区",
+      "大沢3区",
+      "大沢4区",
+      "大沢5区",
+      "大沢6区",
+      "大沢7区",
+      "大沢8区",
+      "大沢9区",
+      "大沢10区",
+      "大沢11区",
+      "大沢12区",
+      "大沢13区",
+      "大沢14区",
+      "大沢15区"
+    ]
   },
   {
     "id": "calendar-2026-yamada-1",
@@ -63,7 +102,10 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/8/_/02_2026yamada1.pdf",
     "checked": "2026-11-20",
     "district": "山田1",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "北浜"
+    ]
   },
   {
     "id": "calendar-2026-yamada-2",
@@ -74,7 +116,13 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/7/_/02_2026yamada2.pdf",
     "checked": "2026-11-20",
     "district": "山田2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "大畑",
+      "長畑",
+      "長崎3丁目",
+      "長崎4丁目"
+    ]
   },
   {
     "id": "calendar-2026-yamada-3",
@@ -85,7 +133,13 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/6/_/02_2026yamada3.pdf",
     "checked": "2026-11-20",
     "district": "山田3",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "川向",
+      "川向町",
+      "中央",
+      "中央町"
+    ]
   },
   {
     "id": "calendar-2026-yamada-4-1",
@@ -107,7 +161,12 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/4/_/02_2026yamada4-2.pdf",
     "checked": "2026-11-20",
     "district": "山田4-2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "沢田",
+      "柳沢(旧北小寄り)",
+      "関口"
+    ]
   },
   {
     "id": "calendar-2026-yamada-5-1",
@@ -118,7 +177,12 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/2/_/02_2026yamada5-1.pdf",
     "checked": "2026-11-20",
     "district": "山田5-1",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "後楽",
+      "山田中央団地",
+      "長崎1丁目"
+    ]
   },
   {
     "id": "calendar-2026-yamada-5-2",
@@ -129,7 +193,11 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/1/_/02_2026yamada5-2.pdf",
     "checked": "2026-11-20",
     "district": "山田5-2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "八幡",
+      "八幡町"
+    ]
   },
   {
     "id": "calendar-2026-yamada-6",
@@ -140,7 +208,12 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/8/_/02-2026yamada6.pdf",
     "checked": "2026-11-20",
     "district": "山田6",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "境田",
+      "境田町",
+      "山田高台団地"
+    ]
   },
   {
     "id": "calendar-2026-yamada-7",
@@ -151,7 +224,10 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/6/_/02-2026yamada7.pdf",
     "checked": "2026-11-20",
     "district": "山田7",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "長崎2丁目"
+    ]
   },
   {
     "id": "calendar-2026-orikasa-1",
@@ -173,7 +249,11 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/2/_/03_2026orikasa2.pdf",
     "checked": "2026-11-20",
     "district": "織笠2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "跡浜",
+      "織笠高台団地"
+    ]
   },
   {
     "id": "calendar-2026-orikasa-3",
@@ -184,7 +264,10 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/3/_/03_2026orikasa3.pdf",
     "checked": "2026-11-20",
     "district": "織笠3",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "KUMON織笠教室前"
+    ]
   },
   {
     "id": "calendar-2026-funakoshi-1",
@@ -195,7 +278,12 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/1/_/04_2026funakosi1.pdf",
     "checked": "2026-11-20",
     "district": "船越1",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "山の内",
+      "四十八坂",
+      "長林"
+    ]
   },
   {
     "id": "calendar-2026-funakoshi-2",
@@ -206,7 +294,12 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/5/9/_/04_2026funakosi2.pdf",
     "checked": "2026-11-20",
     "district": "船越2",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "日向脇",
+      "浦の浜",
+      "田の浜"
+    ]
   },
   {
     "id": "calendar-2026-funakoshi-3",
@@ -217,6 +310,9 @@
     "url": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/6/0/_/04_2026funakosi3.pdf",
     "checked": "2026-11-20",
     "district": "船越3",
-    "fiscal_year": 2026
+    "fiscal_year": 2026,
+    "aliases": [
+      "大浦"
+    ]
   }
 ]

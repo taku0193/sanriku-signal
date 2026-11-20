@@ -2,6 +2,10 @@
 
 const form = document.querySelector("#question-form");
 const question = document.querySelector("#question");
+const questionLabel = document.querySelector("#question-label");
+const previousQuestion = document.querySelector("#previous-question");
+const shortcut = document.querySelector("#shortcut");
+const newQuestion = document.querySelector("#new-question");
 const submit = document.querySelector("#submit");
 const submitLabel = document.querySelector("#submit-label");
 const mode = document.querySelector("#mode");
@@ -20,11 +24,26 @@ const promptText = document.querySelector("#prompt-text");
 const examples = [...document.querySelectorAll(".example")];
 const standaloneData = document.querySelector("#standalone-data");
 const offlineSearch = standaloneData && createOfflineSearch(JSON.parse(standaloneData.textContent));
+const originalPlaceholder = question.placeholder;
 let aiEnabled = false;
+let pending = null;
 
 function showText(element, value) {
   element.textContent = value;
   element.hidden = !value;
+}
+
+function setPending(nextPending) {
+  pending = nextPending;
+  questionLabel.textContent = pending ? pending.prompt : "質問する";
+  question.placeholder = pending ? "例　大沢" : originalPlaceholder;
+  showText(previousQuestion, pending ? `元の質問　${pending.question}` : "");
+  if (pending) question.setAttribute("aria-describedby", previousQuestion.id);
+  else question.removeAttribute("aria-describedby");
+  shortcut.hidden = Boolean(pending);
+  newQuestion.hidden = !pending;
+  if (pending) submitLabel.textContent = "返答を送信";
+  else submitLabel.textContent = aiEnabled ? "AIに質問" : "資料を検索";
 }
 
 function sourceCard(record) {
@@ -56,7 +75,10 @@ function sourceCard(record) {
 }
 
 function renderResult(query, data) {
-  resultTitle.textContent = data.mode === "ai" ? "AIの回答" : "検索結果";
+  resultTitle.textContent = "検索結果";
+  if (data.mode === "ai") {
+    resultTitle.textContent = data.action === "insufficient" ? "確認できなかったこと" : "AIの回答";
+  }
   resultQuestion.textContent = query;
   showText(answer, data.answer);
   showText(notice, data.notice || "");
@@ -75,16 +97,20 @@ form.addEventListener("submit", async (event) => {
   if (submit.disabled) return;
   const query = question.value.trim();
   if (!query) {
-    showText(error, "質問を入力してください。");
+    showText(error, pending ? "地区名を入力してください。" : "質問を入力してください。");
     question.focus();
     return;
   }
 
+  const currentPending = pending;
+  let focusQuestion = false;
   submit.disabled = true;
+  question.readOnly = true;
+  newQuestion.disabled = true;
   examples.forEach((example) => { example.disabled = true; });
   results.hidden = true;
   showText(error, "");
-  showText(status, aiEnabled ? "公式資料を調べ、AIが回答を作成しています…" : "公式資料を検索しています…");
+  showText(status, aiEnabled ? "AIが確認しています…" : "公式資料を検索しています…");
 
   try {
     if (offlineSearch) {
@@ -94,22 +120,32 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: query }),
+      body: JSON.stringify({ question: query, pending: currentPending }),
     });
     const data = await response.json();
     if (!response.ok) {
       showText(error, data.error || "検索できませんでした。もう一度お試しください。");
       return;
     }
-    renderResult(query, data);
+    setPending(data.pending ?? null);
+    if (data.action === "clarify") {
+      question.value = "";
+      focusQuestion = true;
+      return;
+    }
+    if (currentPending && !pending) question.value = "";
+    renderResult(currentPending?.question ?? query, data);
   } catch {
     showText(error, offlineSearch
       ? "資料を検索できませんでした。ページを開き直してください。"
       : "ローカルサーバーに接続できませんでした。起動状況を確認してください。");
   } finally {
     submit.disabled = false;
+    question.readOnly = false;
+    newQuestion.disabled = false;
     examples.forEach((example) => { example.disabled = false; });
     showText(status, "");
+    if (focusQuestion) question.focus();
   }
 });
 
@@ -120,8 +156,17 @@ question.addEventListener("keydown", (event) => {
   }
 });
 
+newQuestion.addEventListener("click", () => {
+  setPending(null);
+  question.value = "";
+  results.hidden = true;
+  showText(error, "");
+  question.focus();
+});
+
 for (const example of examples) {
   example.addEventListener("click", () => {
+    if (pending) setPending(null);
     question.value = example.textContent.trim();
     form.requestSubmit();
   });
@@ -149,7 +194,7 @@ async function loadSettings() {
     const settings = await response.json();
     aiEnabled = settings.ai;
     showText(mode, aiEnabled ? "AI回答モード" : "資料検索モード");
-    submitLabel.textContent = aiEnabled ? "AIに質問" : "資料を検索";
+    setPending(pending);
   } catch {
     // 検索時のエラーはフォーム内に表示する。
   }
