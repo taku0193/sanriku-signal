@@ -60,7 +60,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   const recentTurns = useRef<QuestionAndAnswer[]>([]);
   const focusAfterRoute = useRef(false);
   const focusNextAnswer = useRef(false);
-  const scrollAfterRender = useRef<"bottom" | "keep" | "top" | null>(null);
+  const scrollAfterRender = useRef<"bottom" | "result" | "keep" | "top" | null>(null);
   const previousComposer = useRef<DOMRect | null>(null);
 
   function readRoute(focus = false) {
@@ -125,6 +125,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     const region = scrollRegion.current;
     if (region && scrolling) {
       if (scrolling === "bottom") region.scrollTop = region.scrollHeight;
+      if (scrolling === "result") region.scrollTop = latestScrollTop(region);
       if (scrolling === "top") region.scrollTop = 0;
       updateJumpLatest();
     }
@@ -148,8 +149,17 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     return !region || region.scrollHeight - region.scrollTop - region.clientHeight < 80;
   }
 
+  function latestScrollTop(region: HTMLElement): number {
+    const bottom = region.scrollHeight - region.clientHeight;
+    const result = conversation.current?.lastElementChild?.querySelector(".result-ready");
+    if (!result) return bottom;
+    const start = region.scrollTop + result.getBoundingClientRect().top - region.getBoundingClientRect().top;
+    return Math.max(0, Math.min(bottom, start - 12));
+  }
+
   function updateJumpLatest() {
-    setShowJump(hasTurns && !bottomIsVisible());
+    const region = scrollRegion.current;
+    setShowJump(Boolean(hasTurns && region && region.scrollTop + 80 < latestScrollTop(region)));
   }
 
   function jumpToLatest() {
@@ -157,7 +167,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     if (!region) return;
     focusLastMessage();
     region.scrollTo({
-      top: region.scrollHeight,
+      top: latestScrollTop(region),
       behavior: reducedMotion.matches ? "auto" : "smooth",
     });
     updateJumpLatest();
@@ -172,7 +182,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   }
 
   function updateTurn(id: number, change: Partial<Pick<Turn, "stage" | "searchDetail" | "preview" | "result" | "failure">>) {
-    scrollAfterRender.current = bottomIsVisible() ? "bottom" : "keep";
+    scrollAfterRender.current = bottomIsVisible() ? (change.result ? "result" : "bottom") : "keep";
     setTurns((current) => current.map((turn) => turn.id === id ? { ...turn, ...change } : turn));
   }
 
@@ -225,7 +235,11 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     const history = recentTurns.current;
     active.current = controller;
     focusNextAnswer.current = fromExample;
-    scrollAfterRender.current = "bottom";
+    const region = scrollRegion.current;
+    const lastTurn = conversation.current?.lastElementChild;
+    const readingPast = region && lastTurn && !bottomIsVisible() &&
+      lastTurn.getBoundingClientRect().top > region.getBoundingClientRect().top;
+    scrollAfterRender.current = readingPast ? "keep" : "bottom";
     setTurns((current) => [...current, { id, question: query, stage: "planning", preview: "", result: null, failure: null }]);
     setDraft("");
     setFormError("");
