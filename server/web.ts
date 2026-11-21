@@ -9,7 +9,7 @@ import { makeRetriever } from "./embeddings.js";
 import type { SearchMode } from "./embeddings.js";
 import { isObject, projectRoot, readJsonFile } from "./files.js";
 import { OllamaError } from "./ollama.js";
-import { makeDecider, runTurn } from "./react.js";
+import { KnowledgeSearchError, makeDecider, runTurn } from "./react.js";
 import type { Decider } from "./react.js";
 import { ANSWER_INSTRUCTIONS, loadRecords, makeSourceReader, NO_EVIDENCE } from "./records.js";
 
@@ -203,8 +203,8 @@ export function createGuideServer({ model, retrieval, records = loadRecords(), d
           photos: result.action === "answer" ? photosFor(result.sources) : [], prompt: "",
         };
       } catch (error) {
-        if (!(error instanceof OllamaError)) throw error;
-        notice = "AIに接続できませんでした。公式資料の検索結果を表示しています。";
+        if (!(error instanceof OllamaError || error instanceof KnowledgeSearchError)) throw error;
+        notice = error.message + "公式資料の検索結果を表示しています。";
         if (pending) notice += "返答をもう一度送信すると、続きから再試行できます。";
       }
     }

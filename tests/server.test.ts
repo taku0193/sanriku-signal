@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import type { GuideResult, StreamEvent } from "../frontend/types.js";
@@ -7,7 +8,7 @@ import { AmbiguousDistrict, collectionBounds, findCollectionDays, todayInTokyo }
 import { makeRetriever } from "../server/embeddings.js";
 import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
-import { runTurn, streamGroundedAnswer } from "../server/react.js";
+import { makeDecider, runTurn, streamGroundedAnswer } from "../server/react.js";
 import { loadRecords, makeSourceReader, NO_EVIDENCE } from "../server/records.js";
 import { createGuideServer, readHistory } from "../server/web.js";
 
@@ -252,4 +253,94 @@ test("聞き返しで取得済みの一般資料をサーバーに保持して�
   assert.match(next.answer, /12月8日（火）/);
   assert.match(next.answer, /300円/);
   assert.equal(next.sources.length, 2);
+});
+
+test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり、根拠不足は出典なしで返す", async (context) => {
+  const previousUrl = process.env.YAMADA_CHAT_URL;
+  context.after(() => {
+    if (previousUrl === undefined) delete process.env.YAMADA_CHAT_URL;
+    else process.env.YAMADA_CHAT_URL = previousUrl;
+  });
+  let missingQueries = 0;
+  let stalledAfterHeaders = false;
+  const ollama = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const { stream, messages } = JSON.parse(body);
+    const state = JSON.parse(messages.at(-1).content);
+    const send = (decision: object) => {
+      const message = { content: JSON.stringify(decision) };
+      response.end(stream ? JSON.stringify({ message, done: true }) + "\n" : JSON.stringify({ message }));
+    };
+    if (request.url === "/timeout") {
+      if (!stream) send(searchMuseum);
+      else {
+        stalledAfterHeaders = true;
+        response.writeHead(200, { "Content-Type": "application/x-ndjson" });
+        response.write('{"message":');
+      }
+    } else if (request.url === "/http-error") {
+      response.writeHead(503).end();
+    } else if (request.url === "/malformed") response.end("malformed response");
+    else if (request.url === "/bad-action") send({ action: "unknown" });
+    else if (request.url === "/missing-query" && state.remaining_searches > 0) {
+      missingQueries++;
+      send({ action: "search", target: "official_documents" });
+    } else if (request.url === "/unknown-crowd" && !state.observations.length) {
+      send({ action: "search", target: "official_documents", query: "道の駅やまだ 営業時間" });
+    } else send({ action: "insufficient", answer: "根拠のない回答", sources: ["oisuta-hours"] });
+  }).listen(0, "127.0.0.1");
+
+  const guide = createGuideServer({ records, retrieval: "keyword", decide: makeDecider("gemma4:12b", 250) })
+    .listen(0, "127.0.0.1");
+  for (const server of [ollama, guide]) {
+    context.after(() => new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    }));
+  }
+  await Promise.all([once(ollama, "listening"), once(guide, "listening")]);
+  const stubUrl = `http://127.0.0.1:${(ollama.address() as AddressInfo).port}`;
+  const guideUrl = `http://127.0.0.1:${(guide.address() as AddressInfo).port}/api/ask`;
+  const ask = async (endpoint: string, question = "鯨と海の科学館の大人の入館料は？") => {
+    process.env.YAMADA_CHAT_URL = endpoint;
+    const response = await fetch(guideUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+      body: JSON.stringify({ question }),
+    });
+    assert.equal(response.status, 200);
+    const events: StreamEvent[] = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    const last = events.at(-1);
+    if (last?.type !== "result") throw new Error("結果イベントがありません。");
+    return last.data;
+  };
+
+  const closed = createServer().listen(0, "127.0.0.1");
+  await once(closed, "listening");
+  const closedPort = (closed.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => closed.close(() => resolve()));
+  for (const [url, message] of [
+    [`http://127.0.0.1:${closedPort}/chat`, "AIに接続できませんでした。"],
+    [stubUrl + "/timeout", "AIの回答生成がタイムアウトしました。"],
+    [stubUrl + "/http-error", "AIサーバーがHTTP 503を返しました。"],
+    [stubUrl + "/malformed", "AIから受け取った応答を読み取れませんでした。"],
+    [stubUrl + "/bad-action", "AIから検索や回答に必要な指示を読み取れませんでした。"],
+    [stubUrl + "/missing-query", "AIが検索語など、資料を探す条件を指定できませんでした。"],
+  ]) {
+    const result = await ask(url);
+    assert.equal(result.mode, "search");
+    assert.equal(result.action, "search");
+    assert.equal(result.notice, message + "公式資料の検索結果を表示しています。");
+    assert.ok(result.sources.some(({ url, text }) =>
+      url === "https://yamada-kujirakan.jp/facility/" && text?.includes("大人300円")));
+  }
+  assert.equal(missingQueries, 3);
+  assert.equal(stalledAfterHeaders, true);
+  const insufficient = await ask(stubUrl + "/unknown-crowd", "明日の道の駅やまだは混んでいますか？");
+  assert.equal(insufficient.mode, "ai");
+  assert.equal(insufficient.action, "insufficient");
+  assert.equal(insufficient.answer, NO_EVIDENCE);
+  assert.deepEqual(insufficient.sources, []);
+  assert.equal(insufficient.notice, "");
 });

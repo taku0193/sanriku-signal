@@ -7,7 +7,7 @@ import {
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
 import { isObject, readTextFile } from "./files.js";
-import { chatJson } from "./ollama.js";
+import { chatJson, OllamaError } from "./ollama.js";
 import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
 import type { SourceReader } from "./records.js";
 
@@ -26,7 +26,10 @@ const TOOL_INSTRUCTIONS = readTextFile("prompts/react-tools.md").trimEnd();
 const HISTORY_INSTRUCTIONS = "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、回答の根拠は今回の observations に限定します。";
 const STREAM_INSTRUCTIONS = "回答を返す場合は、JSONを action、sources、answer の順で書いてください。";
 
-type Action = "answer" | "clarify" | "insufficient" | "search";
+const ACTIONS = ["answer", "clarify", "insufficient", "search"] as const;
+type Action = (typeof ACTIONS)[number];
+
+export class KnowledgeSearchError extends Error {}
 
 interface SearchEvent {
   action: "search";
@@ -126,8 +129,8 @@ function formatPromptJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function makeDecider(model: string): Decider {
-  return (state, actions, signal, onContent) => {
+export function makeDecider(model: string, timeoutMs?: number): Decider {
+  return async (state, actions, signal, onContent) => {
     const sourceIds = new Set([
       ...state.observations.flatMap(({ source_ids }) => source_ids),
       ...(state.prior_passages ?? []).map(({ id }) => id),
@@ -158,8 +161,8 @@ export function makeDecider(model: string): Decider {
     const instructions = [
       INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(onContent ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
-    return chatJson({
-      model, signal, onContent,
+    const decision = await chatJson({
+      model, signal, onContent, timeoutMs,
       messages: [{ role: "system", content: instructions }, { role: "user", content: formatPromptJson(state) }],
       format: {
         type: "object",
@@ -167,6 +170,10 @@ export function makeDecider(model: string): Decider {
         required: ["action"], additionalProperties: false,
       },
     });
+    if (!ACTIONS.some((action) => action === decision.action)) {
+      throw new OllamaError("AIから検索や回答に必要な指示を読み取れませんでした。");
+    }
+    return decision;
   };
 }
 
@@ -390,6 +397,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       if (answer && !calendarQuestion) return { action, answer, sources, pending: null };
     }
     break;
+  }
+  if (state.observations.length && state.observations.every(({ status }) => status === "invalid" || status === "error")) {
+    throw new KnowledgeSearchError(searches ? "AIが資料の検索を完了できませんでした。" : "AIが検索語など、資料を探す条件を指定できませんでした。");
   }
   return { action: "insufficient", answer: calendarQuestion ? NO_COLLECTION_DATES : NO_EVIDENCE, sources: [], pending: null };
 }

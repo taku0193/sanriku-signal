@@ -4,17 +4,32 @@ export const DEFAULT_MODEL = "gemma4:12b";
 
 export class OllamaError extends Error {}
 
-export async function ollamaRequest(url: string, timeout: number, signal?: AbortSignal, payload?: object) {
-  const endpoint = new URL(url);
-  if (endpoint.protocol !== "http:" && endpoint.protocol !== "https:") throw new OllamaError("Ollamaの接続先が無効です。");
+export function ollamaSignal(timeout: number, signal?: AbortSignal) {
   const deadline = AbortSignal.timeout(timeout);
-  const response = await fetch(endpoint, {
-    signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
-    ...(payload ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) } : {}),
-  });
+  return signal ? AbortSignal.any([signal, deadline]) : deadline;
+}
+
+export async function ollamaRequest(url: string, signal: AbortSignal, payload?: object) {
+  let endpoint: URL;
+  try {
+    endpoint = new URL(url);
+    if (endpoint.protocol !== "http:" && endpoint.protocol !== "https:") throw new TypeError();
+  } catch (error) {
+    throw new OllamaError("AIの接続先の設定が無効です。", { cause: error });
+  }
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      signal,
+      ...(payload ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) } : {}),
+    });
+  } catch (error) {
+    signal.throwIfAborted();
+    throw new OllamaError("AIに接続できませんでした。", { cause: error });
+  }
   if (!response.ok) {
     await response.body?.cancel();
-    throw new OllamaError(`OllamaがHTTP ${response.status}を返しました。`);
+    throw new OllamaError(`AIサーバーがHTTP ${response.status}を返しました。`);
   }
   return response;
 }
@@ -62,19 +77,21 @@ interface ChatOptions {
   model: string;
   messages: { role: "system" | "user"; content: string }[];
   format: object;
+  timeoutMs?: number;
   signal?: AbortSignal;
   onContent?: (text: string) => void;
 }
 
-export async function chatJson({ model, messages, format, signal, onContent }: ChatOptions) {
+export async function chatJson({ model, messages, format, signal, onContent, timeoutMs = 120_000 }: ChatOptions) {
   const payload = {
     model, messages, format, stream: Boolean(onContent),
     ...(model === DEFAULT_MODEL ? { think: false } : {}),
     options: { temperature: 0, ...(model === DEFAULT_MODEL ? { num_ctx: 6144, num_predict: 448 } : {}) },
   };
+  const requestSignal = ollamaSignal(timeoutMs, signal);
   try {
     const url = process.env.YAMADA_CHAT_URL || "http://127.0.0.1:11434/api/chat";
-    const response = await ollamaRequest(url, 120_000, signal, payload);
+    const response = await ollamaRequest(url, requestSignal, payload);
     const content = onContent ? await readStream(response, onContent) : (await response.json()).message?.content;
     if (typeof content !== "string") throw new Error("Ollamaの応答に本文がありません。");
     const decision: unknown = JSON.parse(content);
@@ -82,8 +99,9 @@ export async function chatJson({ model, messages, format, signal, onContent }: C
       typeof value === "string" && /[\uD800-\uDFFF]/u.test(value))) throw new Error("Ollamaの行動が無効です。");
     return decision;
   } catch (error) {
-    if (signal?.aborted) throw signal.reason;
+    signal?.throwIfAborted();
+    if (requestSignal.aborted) throw new OllamaError("AIの回答生成がタイムアウトしました。", { cause: error });
     if (error instanceof OllamaError) throw error;
-    throw new OllamaError("Ollamaの応答を取得できませんでした。", { cause: error });
+    throw new OllamaError("AIから受け取った応答を読み取れませんでした。", { cause: error });
   }
 }

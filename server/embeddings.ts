@@ -4,7 +4,7 @@ import { endianness } from "node:os";
 import { hasTopic, normalize, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { isObject, projectRoot } from "./files.js";
-import { ollamaRequest } from "./ollama.js";
+import { ollamaRequest, ollamaSignal } from "./ollama.js";
 import { lexicalText, makeKeywordSearch } from "./records.js";
 
 const DEFAULT_MODEL = "embeddinggemma-2:270m";
@@ -69,7 +69,7 @@ async function loadIndex(path: URL, documents: ReturnType<typeof documentHashes>
 }
 
 async function currentDigest(url: string, model: string, signal?: AbortSignal) {
-  const data: unknown = await (await ollamaRequest(new URL("tags", url).href, 60_000, signal)).json();
+  const data: unknown = await (await ollamaRequest(new URL("tags", url).href, ollamaSignal(60_000, signal))).json();
   if (!isObject(data) || !Array.isArray(data.models)) throw new Error("モデル一覧を読めません。");
   for (const modelInfo of data.models) {
     if (!isObject(modelInfo)) continue;
@@ -83,7 +83,7 @@ async function currentDigest(url: string, model: string, signal?: AbortSignal) {
 
 async function embed(url: string, model: string, query: string, dimensions: number, signal?: AbortSignal) {
   const input = ["task: search result | query: " + query];
-  const data: unknown = await (await ollamaRequest(url, 60_000, signal, { model, input, truncate: true })).json();
+  const data: unknown = await (await ollamaRequest(url, ollamaSignal(60_000, signal), { model, input, truncate: true })).json();
   if (!isObject(data) || typeof data.model !== "string" || modelTag(data.model) !== modelTag(model) ||
       !Array.isArray(data.embeddings) || data.embeddings.length !== 1) throw new Error("埋め込みの応答が無効です。");
   const values: unknown = data.embeddings[0];
