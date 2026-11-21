@@ -5,18 +5,24 @@ import {
   AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, findCollectionDays, fiscalYear, todayInTokyo,
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
-import type { RetrievalResult, Retriever } from "./embeddings.js";
+import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
 import { isObject, readTextFile } from "./files.js";
 import { chatJson } from "./ollama.js";
-import { ANSWER_INSTRUCTIONS, NO_EVIDENCE } from "./records.js";
+import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
+import type { SourceReader } from "./records.js";
 
 const MAX_SEARCHES = 2;
 const MAX_DECISIONS = 3;
+const EXCERPT_LIMIT = 600;
+const DETAIL_LIMIT = 800;
+const PRIOR_LIMIT = 300;
+const MAX_PRIOR_PASSAGES = 3;
 const TARGETS = ["official_documents", "collection_calendars"];
 const NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。";
 const INSTRUCTIONS = readTextFile("prompts/react.md").trimEnd()
   .replace("{ANSWER_INSTRUCTIONS}", ANSWER_INSTRUCTIONS)
   .replace("{TYPE_GUIDE}", Object.entries(COLLECTION_TYPES).map(([key, label]) => `  ${key} は ${label}`).join("\n"));
+const TOOL_INSTRUCTIONS = readTextFile("prompts/react-tools.md").trimEnd();
 const HISTORY_INSTRUCTIONS = "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、回答の根拠は今回の observations に限定します。";
 const STREAM_INSTRUCTIONS = "回答を返す場合は、JSONを action、sources、answer の順で書いてください。";
 
@@ -36,16 +42,24 @@ interface SearchEvent {
   waste_types?: WasteType[];
   district_candidates?: string[];
   retrieval?: RetrievalResult["mode"];
+  strategy?: SearchStrategy;
+  source_id?: string;
+}
+
+interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" | "checked" | "published"> {
+  truncated?: true;
 }
 
 interface TurnState {
   question: string;
   today: string;
   current_fiscal_year: number;
-  observations: (SearchEvent & {
-    passages: Pick<SourceRecord, "id" | "title" | "text" | "source" | "checked" | "published">[];
-  })[];
+  observations: (SearchEvent & { passages: Passage[] })[];
+  search_strategies: SearchStrategy[];
+  expandable_source_ids?: string[];
+  available_sections?: Record<string, string[]>;
   history?: QuestionAndAnswer[];
+  prior_passages?: Passage[];
   follow_up?: { asked: string; reply: string };
   remaining_searches?: number;
 }
@@ -58,6 +72,9 @@ interface TurnOptions {
   pending?: Pending | null;
   history?: QuestionAndAnswer[];
   signal?: AbortSignal;
+  searchMode?: SearchMode;
+  readSource?: SourceReader;
+  checkpoint?: readonly SourceRecord[];
   today?: string;
   onProgress?: (stage: ProgressStage, detail?: string) => void;
   onDelta?: (text: string) => void;
@@ -69,6 +86,7 @@ interface TurnResult {
   answer: string;
   sources: SourceRecord[];
   pending: Pending | null;
+  checkpoint?: SourceRecord[];
 }
 
 function knownSourceIds(value: unknown, evidence: ReadonlyMap<string, unknown>): value is string[] {
@@ -110,16 +128,20 @@ function formatPromptJson(value: unknown): string {
 
 export function makeDecider(model: string): Decider {
   return (state, actions, signal, onContent) => {
+    const sourceIds = new Set([
+      ...state.observations.flatMap(({ source_ids }) => source_ids),
+      ...(state.prior_passages ?? []).map(({ id }) => id),
+    ]);
     const sources = {
       type: "array",
-      items: {
-        type: "string",
-        ...(onContent ? { enum: [...new Set(state.observations.flatMap((observation) => observation.source_ids))] } : {}),
-      },
+      items: { type: "string", ...(sourceIds.size ? { enum: [...sourceIds] } : {}) },
     };
+    const expandable = state.expandable_source_ids;
     const properties = {
       action: { type: "string", enum: actions },
-      target: { type: "string", enum: TARGETS },
+      target: { type: "string", enum: expandable?.length ? [...TARGETS, "source_details"] : TARGETS },
+      strategy: { type: "string", enum: state.search_strategies },
+      ...(expandable?.length ? { source_id: { type: "string", enum: expandable } } : {}),
       query: { type: "string" },
       missing_fact: { type: "string" },
       district: { type: "string" },
@@ -134,7 +156,7 @@ export function makeDecider(model: string): Decider {
       sources,
     };
     const instructions = [
-      INSTRUCTIONS, ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(onContent ? [STREAM_INSTRUCTIONS] : []),
+      INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(onContent ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
     return chatJson({
       model, signal, onContent,
@@ -174,15 +196,23 @@ function isWasteType(value: unknown): value is WasteType {
 
 type LookupResult = { records: SourceRecord[]; mode?: RetrievalResult["mode"] };
 
+function passageFor(record: SourceRecord, limit: number): Passage {
+  const { id, title, text, source, checked, published } = record;
+  const excerpt = text.slice(0, limit).replace(/[\uD800-\uDBFF]$/, "");
+  return { id, title, text: excerpt, source, checked, published, ...(excerpt.length < text.length ? { truncated: true } : {}) };
+}
+
 function configureSearch(event: SearchEvent, decision: Record<string, unknown>, today: string,
-                         wording: string[], retrieve: Retriever, signal?: AbortSignal) {
+                         wording: string[], retrieve: Retriever, strategies: SearchStrategy[], signal?: AbortSignal) {
   if (event.target === "official_documents") {
     const query = trimString(decision.query);
     if (!query || [...query].length > 400) return;
-    event.query = query;
+    const strategy = decision.strategy === undefined ? strategies[0] : strategies.find((value) => value === decision.strategy);
+    if (!strategy) return;
+    Object.assign(event, { query, strategy });
     return {
-      key: JSON.stringify([event.target, compactText(normalize(query))]),
-      lookup: (): Promise<LookupResult> => retrieve(query, signal),
+      key: JSON.stringify([event.target, strategy, compactText(normalize(query))]),
+      lookup: (): Promise<LookupResult> => retrieve(query, signal, strategy),
     };
   }
   if (event.target === "collection_calendars") {
@@ -208,11 +238,30 @@ function configureSearch(event: SearchEvent, decision: Record<string, unknown>, 
   }
 }
 
+function configureDetailSearch(event: SearchEvent, decision: Record<string, unknown>, state: TurnState,
+                               readSource: SourceReader | undefined, evidence: ReadonlyMap<string, SourceRecord>,
+                               exposedLengths: ReadonlyMap<string, number>) {
+  const sourceId = trimString(decision.source_id);
+  const query = trimString(decision.query);
+  if (!readSource || !state.expandable_source_ids?.includes(sourceId) || !query || [...query].length > 400) return;
+  const anchor = evidence.get(sourceId)!;
+  Object.assign(event, { source_id: sourceId, query });
+  return {
+    key: JSON.stringify([event.target, sourceId, compactText(normalize(query))]),
+    lookup: async (): Promise<LookupResult> => {
+      const records = exposedLengths.get(sourceId)! < Math.min(anchor.text.length, DETAIL_LIMIT) ? [anchor] : [];
+      const unseen = readSource(anchor).filter(({ id }) => !evidence.has(id));
+      return { records: [...records, ...rankSections(unseen, query, 2 - records.length)] };
+    },
+  };
+}
+
 export async function runTurn(question: string, decide: Decider, retrieve: Retriever, {
-  pending, history, signal, today = todayInTokyo(), onProgress, onDelta, onAction,
+  pending, history, signal, searchMode = "hybrid", readSource, checkpoint, today = todayInTokyo(), onProgress, onDelta, onAction,
 }: TurnOptions = {}): Promise<TurnResult> {
   const state: TurnState = {
     question: pending?.question ?? question, today, current_fiscal_year: fiscalYear(today), observations: [],
+    search_strategies: searchMode === "keyword" ? ["keyword"] : ["hybrid", "keyword", "semantic"],
   };
   if (history?.length) state.history = history;
   const hint = pending?.district_hint;
@@ -222,14 +271,26 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   let calendarQuestion = asksCollectionDate(wording.join("\n"));
   const reservationOnly = !calendarQuestion && asksReservationDeadline(normalize(state.question));
 
+  const evidence = new Map<string, SourceRecord>();
+  const exposedLengths = new Map<string, number>();
+  if (pending && checkpoint?.length) {
+    state.prior_passages = checkpoint.slice(0, MAX_PRIOR_PASSAGES).map((record) => {
+      const passage = passageFor(record, PRIOR_LIMIT);
+      evidence.set(record.id, record);
+      exposedLengths.set(record.id, passage.text.length);
+      return passage;
+    });
+  }
+
   function clarify(prompt: string, districtHint?: string): TurnResult {
+    const prior = [...evidence.values()].filter((record) => !record.calendar_answer).slice(0, MAX_PRIOR_PASSAGES);
     return {
       action: "clarify", answer: prompt, sources: [],
       pending: { question: state.question, field: "district", prompt, ...(districtHint ? { district_hint: districtHint } : {}) },
+      ...(prior.length ? { checkpoint: prior } : {}),
     };
   }
 
-  const evidence = new Map<string, SourceRecord>();
   const previous = new Map<string, LookupResult>();
   let ambiguity: AmbiguousDistrict | undefined;
   let searches = 0;
@@ -242,6 +303,17 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const remaining = Math.min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1);
     if (remaining) actions.push("search");
     state.remaining_searches = remaining;
+    state.expandable_source_ids = readSource && [...evidence.values()].filter((record) =>
+      !record.calendar_answer && (exposedLengths.get(record.id)! < Math.min(record.text.length, DETAIL_LIMIT) ||
+        readSource(record).some(({ id }) => !evidence.has(id)))
+    ).map(({ id }) => id);
+    state.available_sections = readSource && state.expandable_source_ids?.length
+      ? Object.fromEntries(state.expandable_source_ids.map((id) => {
+        const sections = readSource(evidence.get(id)!).filter((record) => !evidence.has(record.id));
+        const ranked = sections.length <= 3 ? sections : rankSections(sections, state.question, 3);
+        return [id, ranked.map((record) => (record.heading ?? record.title).slice(0, 80))];
+      }))
+      : undefined;
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
     const stream = onDelta && evidence.size && !calendarQuestion ? streamGroundedAnswer(evidence, onDelta) : undefined;
     const decision = await decide(state, actions, signal, stream);
@@ -251,23 +323,25 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     if (action === "search") {
       const event: SearchEvent = { action, target: decision.target, status: "invalid", source_ids: [] };
       const missing = trimString(decision.missing_fact);
-      if (missing) event.missing_fact = missing;
+      if (missing) event.missing_fact = [...compactText(missing)].slice(0, 60).join("");
       if (event.target === "collection_calendars") calendarQuestion = true;
-      const search = configureSearch(event, decision, today, wording, retrieve, signal);
+      const search = event.target === "source_details"
+        ? configureDetailSearch(event, decision, state, readSource, evidence, exposedLengths)
+        : configureSearch(event, decision, today, wording, retrieve, state.search_strategies, signal);
       let found: LookupResult | undefined;
       if (search) {
         found = previous.get(search.key);
         if (found) event.status = "reused";
         else {
-          searchDetail = [...compactText(missing)].slice(0, 60).join("") || undefined;
+          searchDetail = event.missing_fact ?? (event.target === "source_details" ? "見つけた資料の詳しい内容" : undefined);
           onProgress?.("searching", searchDetail);
           searches++;
           try {
-            found = await search.lookup();
-            found.records = found.records.map((record) =>
+            const result = await search.lookup();
+            found = { ...result, records: result.records.map((record) =>
               record.calendar_answer && evidence.has(record.id) && evidence.get(record.id)!.text !== record.text
                 ? { ...record, id: `${record.id}-lookup-${searches}` } : record
-            );
+            ) };
             previous.set(search.key, found);
             event.status = found.records.length ? "found" : "not_found";
             if (event.target === "collection_calendars" && found.records.length) ambiguity = undefined;
@@ -281,15 +355,20 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
           }
         }
       }
-      const passages = found?.records ?? [];
-      for (const record of passages) evidence.set(record.id, record);
-      event.source_ids = passages.map((record) => record.id);
+      const hits = found?.records ?? [];
+      const limit = event.target === "source_details" ? DETAIL_LIMIT : EXCERPT_LIMIT;
+      const passages = hits.flatMap((record) => {
+        const passage = passageFor(record, limit);
+        const length = exposedLengths.get(record.id);
+        if (length !== undefined && length >= passage.text.length) return [];
+        evidence.set(record.id, record);
+        exposedLengths.set(record.id, passage.text.length);
+        return [passage];
+      });
+      event.source_ids = hits.map(({ id }) => id);
       if (found?.mode) event.retrieval = found.mode;
       onAction?.(event);
-      state.observations.push({
-        ...event, passages: event.status === "reused" ? [] : passages.map(({ id, title, text, source, checked, published }) =>
-          ({ id, title, text, source, checked, published })),
-      });
+      state.observations.push({ ...event, passages });
       continue;
     }
 
@@ -298,8 +377,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const sources = knownSourceIds(decision.sources, evidence)
       ? [...new Set(decision.sources)].map((id) => evidence.get(id)!) : [];
     if (ambiguity) return clarify(`「${ambiguity.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, ambiguity.district);
-    if (action === "clarify" && decision.field === "district") {
-      return clarify(answer && [...answer].length <= 400 ? answer : "山田町内のどの地区か教えてください。", hint);
+    if (action === "clarify" && decision.field === "district" && calendarQuestion) {
+      return clarify("山田町内のどの地区か教えてください。", hint);
     }
     if (action === "answer" && sources.length) {
       const dates = sources.flatMap((record) => record.calendar_answer ? [record.calendar_answer] : []);
@@ -309,9 +388,6 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         return { action, answer: dates.join("\n\n"), sources, pending: null };
       }
       if (answer && !calendarQuestion) return { action, answer, sources, pending: null };
-    }
-    if (action === "insufficient" && !calendarQuestion) {
-      return { action, answer: answer || NO_EVIDENCE, sources, pending: null };
     }
     break;
   }

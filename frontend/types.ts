@@ -26,6 +26,7 @@ export interface Pending {
   field: "district";
   prompt: string;
   district_hint?: string;
+  resume_token?: string;
 }
 
 export interface QuestionAndAnswer {

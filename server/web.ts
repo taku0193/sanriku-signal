@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -10,12 +11,14 @@ import { isObject, projectRoot, readJsonFile } from "./files.js";
 import { OllamaError } from "./ollama.js";
 import { makeDecider, runTurn } from "./react.js";
 import type { Decider } from "./react.js";
-import { ANSWER_INSTRUCTIONS, loadRecords, NO_EVIDENCE } from "./records.js";
+import { ANSWER_INSTRUCTIONS, loadRecords, makeSourceReader, NO_EVIDENCE } from "./records.js";
 
 const QUESTION_LIMIT = 400;
 const REQUEST_LIMIT = 16_384;
 const HISTORY_LIMIT = 2;
 const HISTORY_ANSWER_LIMIT = 700;
+const MAX_CHECKPOINTS = 128;
+const CHECKPOINT_TTL_MS = 15 * 60_000;
 const EVENT_TYPE = "application/x-ndjson";
 const VIDEO_TYPE = "video/mp4";
 const COMMON_HEADERS = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
@@ -51,12 +54,16 @@ function readText(value: unknown, limit = QUESTION_LIMIT): string {
 export function readPending(value: unknown): Pending | null {
   if (value === undefined || value === null) return null;
   if (!isObject(value) || value.field !== "district" ||
-      Object.keys(value).some((key) => !["question", "field", "prompt", "district_hint"].includes(key))) {
+      Object.keys(value).some((key) => !["question", "field", "prompt", "district_hint", "resume_token"].includes(key))) {
     throw new TypeError();
   }
+  const resumeToken = value.resume_token;
+  if (Object.hasOwn(value, "resume_token") &&
+      (typeof resumeToken !== "string" || !/^[a-f0-9-]{36}$/.test(resumeToken))) throw new TypeError();
   return {
     question: readText(value.question),
     field: "district",
+    ...(typeof resumeToken === "string" ? { resume_token: resumeToken } : {}),
     prompt: readText(value.prompt),
     ...(Object.hasOwn(value, "district_hint") ? { district_hint: readText(value.district_hint) } : {}),
   };
@@ -162,17 +169,35 @@ interface ServerOptions {
 
 export function createGuideServer({ model, retrieval, records = loadRecords(), decide = model ? makeDecider(model) : undefined }: ServerOptions) {
   const retrieve = makeRetriever(records, retrieval);
+  const readSource = makeSourceReader(records);
+  const checkpoints = new Map<string, { pending: Pending; records: SourceRecord[]; expiresAt: number }>();
 
   async function answer({ question, pending, history }: AskInput, signal: AbortSignal,
                         progress?: (event: ProgressEvent) => void): Promise<GuideResult> {
     let notice = "";
     if (decide) {
       try {
-        const result = await runTurn(question, decide, retrieve, {
-          pending, history, signal,
+        const token = pending?.resume_token;
+        const saved = token ? checkpoints.get(token) : undefined;
+        const resume = saved && saved.expiresAt > Date.now() &&
+          saved.pending.question === pending?.question && saved.pending.prompt === pending.prompt &&
+          saved.pending.district_hint === pending.district_hint ? saved : undefined;
+        const { checkpoint, ...result } = await runTurn(question, decide, retrieve, {
+          pending, history, signal, searchMode: retrieval, readSource, checkpoint: resume?.records,
           onProgress: progress && ((stage, detail) => progress({ type: "progress", stage, ...(detail ? { detail } : {}) })),
           onDelta: progress && ((text) => progress({ type: "delta", text })),
         });
+        signal.throwIfAborted();
+        if (resume && token) checkpoints.delete(token);
+        if (result.pending && checkpoint?.length) {
+          const now = Date.now();
+          for (const [id, entry] of checkpoints) {
+            if (entry.expiresAt <= now) checkpoints.delete(id);
+          }
+          if (checkpoints.size >= MAX_CHECKPOINTS) checkpoints.delete(checkpoints.keys().next().value!);
+          result.pending.resume_token = randomUUID();
+          checkpoints.set(result.pending.resume_token, { pending: result.pending, records: checkpoint, expiresAt: now + CHECKPOINT_TTL_MS });
+        }
         return {
           ...result, mode: "ai", sources: result.sources.map(publicSource), notice,
           photos: result.action === "answer" ? photosFor(result.sources) : [], prompt: "",

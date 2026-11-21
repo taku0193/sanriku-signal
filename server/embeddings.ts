@@ -13,11 +13,12 @@ const QUERY_FORMAT = "task: search result | query: {query}";
 const LITTLE_ENDIAN = endianness() === "LE";
 
 export type SearchMode = "keyword" | "hybrid";
+export type SearchStrategy = SearchMode | "semantic";
 export interface RetrievalResult {
   records: SourceRecord[];
-  mode: SearchMode | "keyword_fallback";
+  mode: SearchStrategy | "keyword_fallback";
 }
-export type Retriever = (query: string, signal?: AbortSignal) => Promise<RetrievalResult>;
+export type Retriever = (query: string, signal?: AbortSignal, strategy?: SearchStrategy) => Promise<RetrievalResult>;
 
 type VectorIndex = { dimensions: number; digest: string; entries: [SourceRecord, Float32Array][] };
 
@@ -155,13 +156,16 @@ export function makeRetriever(records: SourceRecord[], mode: SearchMode, path = 
     return current.index;
   }
 
-  return async (query, signal) => {
+  return async (query, signal, strategy = mode) => {
+    if (strategy === "keyword") return { records: keyword(query), mode: "keyword" };
     try {
       const index = await getIndex();
       if (!index || await currentDigest(url, tag, signal) !== index.digest) throw new Error("埋め込み索引が一致しません。");
       const vector = await embed(url, model, query, index.dimensions, signal);
       if (await currentDigest(url, tag, signal) !== index.digest) throw new Error("検索中に埋め込みモデルが変わりました。");
-      return { records: hybrid(keyword(query), semanticSearch(index, vector), query), mode };
+      const semantic = semanticSearch(index, vector);
+      const hits = strategy === "semantic" ? semantic.slice(0, SEARCH_LIMIT) : hybrid(keyword(query), semantic, query);
+      return { records: hits, mode: strategy };
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
       return { records: keyword(query), mode: "keyword_fallback" };

@@ -78,6 +78,31 @@ function termsFor(query: string) {
   return [...terms];
 }
 
+export function makeSourceReader(records: SourceRecord[]) {
+  const sections = new Map<string, SourceRecord[]>();
+  for (const record of records) {
+    const entries = sections.get(record.url);
+    if (entries) entries.push(record);
+    else sections.set(record.url, [record]);
+  }
+
+  return (record: SourceRecord) => sections.get(record.url) ?? [];
+}
+
+export type SourceReader = ReturnType<typeof makeSourceReader>;
+
+export function rankSections(sections: readonly SourceRecord[], query: string, limit: number) {
+  const terms = termsFor(query);
+  return sections.map((section) => {
+    const heading = lexicalText(section.heading ?? section.title);
+    const body = lexicalText(section.text);
+    const score = terms.reduce((sum, term) =>
+      sum + 3 * Number(heading.includes(term)) + Number(body.includes(term)), 0);
+    return { section, score };
+  }).filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score).slice(0, limit).map(({ section }) => section);
+}
+
 export function makeKeywordSearch(records: SourceRecord[]) {
   const curated = records.filter((record) => record.keywords?.length);
   const imported = records.filter((record) => record.published !== undefined).map((record) => ({
