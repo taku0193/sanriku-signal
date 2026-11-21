@@ -11,8 +11,8 @@ import { chatJson } from "./ollama.js";
 import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
 import type { SourceReader } from "./records.js";
 
-const MAX_SEARCHES = 2;
-const MAX_DECISIONS = 3;
+const MAX_SEARCHES = 3;
+const MAX_DECISIONS = MAX_SEARCHES + 1;
 const EXCERPT_LIMIT = 600;
 const DETAIL_LIMIT = 800;
 const PRIOR_LIMIT = 300;

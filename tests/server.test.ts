@@ -28,13 +28,13 @@ test("Unicodeの本文は取得済みの資料IDを確認した後にだけ流�
   assert.ok(deltas.length > 1);
 });
 
-test("検索上限を守り、再送した検索条件を使い回して未取得の出典を拒否する", async () => {
+test("再送した検索条件を使い回して未取得の出典を拒否する", async () => {
   const events: string[] = [];
   let decisions = 0, searches = 0;
-  const result = await runTurn("料金は？", async (_state, actions) => {
+  const result = await runTurn("料金は？", async (state) => {
     decisions++;
     if (decisions <= 2) return searchMuseum;
-    assert.ok(!actions.includes("search"));
+    assert.equal(state.remaining_searches, 1);
     return { action: "answer", answer: "根拠のない文", sources: ["unseen"] };
   }, async (query) => {
     searches++;
@@ -48,13 +48,31 @@ test("検索上限を守り、再送した検索条件を使い回して未取�
   assert.deepEqual(result.sources, []);
 });
 
+test("3回目の検索結果が最終判断に届き、4回目の検索を拒否する", async () => {
+  const budgets: (number | undefined)[] = [];
+  const queries: string[] = [];
+  const result = await runTurn("山田町の資料を探して", async (state, actions) => {
+    budgets.push(state.remaining_searches);
+    const number = state.observations.length;
+    assert.equal(actions.includes("search"), number < 3);
+    if (number === 3) assert.equal(state.observations[2].status, "not_found");
+    return { ...searchMuseum, query: `検索語 ${number + 1}` };
+  }, async (query) => {
+    queries.push(query);
+    return { records: [], mode: "keyword" };
+  });
+  assert.deepEqual(budgets, [3, 2, 1, 0]);
+  assert.deepEqual(queries, ["検索語 1", "検索語 2", "検索語 3"]);
+  assert.equal(result.action, "insufficient");
+});
+
 test("同じ検索語で方式を切り替え、埋め込みの失敗を観察に返す", async () => {
   const strategies: (SearchStrategy | undefined)[] = [];
   const hybrid = makeRetriever(records, "hybrid", new URL("file:///dev/null/embeddings-cache.json"));
   const result = await runTurn("科学館の料金は？", async (state, actions) => {
     if (!state.observations.length) return { ...searchMuseum, strategy: "keyword" };
     if (state.observations.length === 1) return { ...searchMuseum, strategy: "semantic" };
-    assert.ok(!actions.includes("search"));
+    assert.ok(actions.includes("search"));
     assert.deepEqual(state.observations.map(({ retrieval }) => retrieval), ["keyword", "keyword_fallback"]);
     assert.deepEqual(state.observations[1].passages, []);
     return { action: "insufficient", answer: "無料です。", sources: ["museum-fees"] };

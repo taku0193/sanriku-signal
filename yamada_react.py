@@ -16,8 +16,8 @@ from yamada_calendars import (
 from yamada_rag import ANSWER_INSTRUCTIONS, NO_EVIDENCE, chat_json, cited_records, normalize, search
 
 
-MAX_SEARCHES = 2
-MAX_DECISIONS = 3
+MAX_SEARCHES = 3
+MAX_DECISIONS = MAX_SEARCHES + 1
 TARGETS = ("official_documents", "collection_calendars")
 TYPE_GUIDE = "\n".join(f"  {key} は {label}" for key, label in COLLECTION_TYPES.items())
 NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。"

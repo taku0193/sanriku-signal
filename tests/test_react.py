@@ -111,7 +111,7 @@ class ReactTests(unittest.TestCase):
         self.assertEqual([event.get("status") for event in events[:2]], ["found", "reused"])
         self.assertEqual(result.action, "insufficient")
         self.assertEqual(result.sources, [])
-        self.assertNotIn("search", decide.call_args.kwargs["actions"])
+        self.assertIn("search", decide.call_args.kwargs["actions"])
         self.assertEqual(decide.call_count, 3)
 
     def test_search_and_decision_caps(self):
@@ -119,12 +119,14 @@ class ReactTests(unittest.TestCase):
             {"action": "search", "target": "official_documents", "query": "一つ目"},
             {"action": "search", "target": "official_documents", "query": "二つ目"},
             {"action": "search", "target": "official_documents", "query": "三つ目"},
+            {"action": "search", "target": "official_documents", "query": "四つ目"},
         ])
         with patch("yamada_react.search", return_value=[]) as retrieve:
             result = run_turn("質問", [], decide)
         self.assertEqual(result.action, "insufficient")
-        self.assertEqual(retrieve.call_count, 2)
-        self.assertEqual(decide.call_count, 3)
+        self.assertEqual(retrieve.call_count, 3)
+        self.assertEqual(decide.call_count, 4)
+        self.assertNotIn("search", decide.call_args.kwargs["actions"])
 
     def test_tool_error_returns_an_observation(self):
         events = []
