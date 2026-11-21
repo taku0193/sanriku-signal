@@ -70,15 +70,15 @@ python3 yamada_rag.py --model --trace --baseline '岩手船越駅が最寄りの
 
 ## 4. 回答と出典をまとめて評価する
 
-Ollamaを起動した状態でPythonの比較用CLIを実行すると、既定のGemma 4 12Bで観光・くらしの13問を試せます。全件の実行には数分かかることがあります。
+Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらしの13問で評価します。検索方式ごとに19問の上位3件を照合します。
 
 ```bash
-python3 -B evaluate_rag.py --mode react --output evaluation-results.json
+npm run evaluate:server -- --output /tmp/sanriku-evaluation.json
 ```
 
-結果JSONには、実際の回答と出典、検索条件と取得した資料ID、応答時間が入ります。ReActの評価ではターンごとの行動も確認できます。大沢の日程表の例だけ試すには `--case collection-district-unknown` を追加します。`--mode` を省略すると、初回検索のみと旧版の追加検索ありを比較します。
+結果JSONには、ターンごとの回答・出典、Gemmaが選んだ検索先と検索方式、取得した資料ID、応答時間が入ります。駅から施設を特定する例だけ試すには `--case compare-by-station` を追加します。必要な語句・出典・行動の判定条件は [評価質問](evaluation/questions.json) にあります。検索上限、聞き返しの引き継ぎ、HTTPでのストリーミングは、Ollamaなしで `npm run test:server` を実行して確認できます。
 
-質問と判定条件は [`evaluation/questions.json`](evaluation/questions.json) にあります。自動判定では回答に必要な語句・数値、資料ID・URL、ReActの行動を確認します。文全体で意味が合っているかは実際の回答も読みます。終了コードは全件合格が `0`、要確認の回答がある場合が `1`、実行エラーが `2` です。TypeScript版の検索上限、出典照合、HTTPでのストリーミングなどは、Ollamaを使わず `npm run test:server` で試せます。
+初回検索のみ・旧版の追加検索・Python版のReActを比較するには `python3 -B evaluate_rag.py` を使います。Python版のReActを実行するときは `--mode react` を指定します。
 
 ## 言い換えに対応する検索を試す
 
@@ -87,11 +87,10 @@ python3 -B evaluate_rag.py --mode react --output evaluation-results.json
 ```bash
 ollama pull embeddinggemma-2:270m
 python3 -B -m yamada_embeddings
-python3 -B evaluate_retrieval.py --mode keyword --mode semantic --mode hybrid --output retrieval-results.json
 npm start -- --model --retrieval hybrid
 ```
 
-`evaluate_retrieval.py` は、正式名、言い換え、複数資料が必要な19問で、必要な根拠が上位3件に入ったかを測ります。回答生成も比較するには `evaluate_rag.py --mode react --retrieval hybrid` を実行します。検索方式の既定値はキーワードです。WebとCLIでは `--retrieval hybrid` で切り替え、ごみ収集日は専用の日付照合を使います。
+起動時の既定値はキーワード検索です。Webを `--retrieval hybrid` で起動すると、Gemmaは検索ごとに併用・キーワード・意味検索を選べます。検索結果の資料IDを指定すると、同じ出典から続きや関連する節を探せます。地区ごとの収集日は専用の日程表を照合します。
 
 索引の `embeddings-cache.json` は資料から再生成するローカルファイルです。資料を更新したら `python3 -B -m yamada_embeddings` で差分を反映します。索引や埋め込みサーバーを利用できないときはキーワード検索に切り替わります。埋め込み用Ollamaの接続先を変える場合は `YAMADA_EMBED_URL`、モデル名を変える場合は `YAMADA_EMBED_MODEL` を設定します。設定変更後は同じ設定で索引を生成してアプリを起動します。
 

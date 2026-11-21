@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build && npm run build:server",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node .runtime/typescript/server/main.js",
+    "evaluate:server": "npm run build:server && node .runtime/typescript/evaluation/server.js",
     "test:server": "npm run build:server && node --test .runtime/typescript/tests/server.test.js"
   },
   "dependencies": {

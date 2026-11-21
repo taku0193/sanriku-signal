@@ -10,5 +10,5 @@
     "noEmit": false,
     "noEmitOnError": true
   },
-  "include": ["server/**/*.ts", "tests/server.test.ts"]
+  "include": ["server/**/*.ts", "evaluation/server.ts", "tests/server.test.ts"]
 }
