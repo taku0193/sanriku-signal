@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import AnswerText from "./AnswerText";
+import MuseumCard, { museumFacts } from "./MuseumCard";
 import type { ProgressStage, Turn } from "./types";
 
 const progressLabels: Record<ProgressStage, string> = {
-  planning: "質問を確認しています…",
-  searching: "山田町の資料を探しています…",
-  reviewing: "資料を確認して回答をまとめています…",
-  generating: "回答を生成しています…",
+  planning: "質問を確認しています",
+  searching: "地域の資料を探しています",
+  reviewing: "見つけた資料を確認しています",
+  generating: "回答をまとめています",
 };
 
 function linkFor(value?: string): string | undefined {
@@ -27,10 +28,8 @@ interface ChatTurnProps {
 export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
   const result = turn.result;
   const { stage, searchDetail } = turn;
-  let progressLabel = progressLabels[stage];
-  if (searchDetail && stage === "searching") progressLabel = `「${searchDetail}」の資料を探しています…`;
-  if (searchDetail && stage === "reviewing") progressLabel = `「${searchDetail}」の資料を確認しています…`;
   const sources = result?.sources ?? [];
+  const facts = result?.action === "search" || result?.action === "answer" ? museumFacts(turn.question, sources) : undefined;
   const photos = result?.photos ?? [];
   const copyText = result?.mode === "ai" ? result.answer : result?.prompt ?? "";
   const [copyStatus, setCopyStatus] = useState("");
@@ -74,7 +73,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
             {result ? (
               <>
                 {result.notice && <p className="notice">{result.notice}</p>}
-                {result.answer ? <AnswerText text={result.answer} /> :
+                {facts ? <MuseumCard facts={facts} /> : result.answer ? <AnswerText text={result.answer} /> :
                   result.mode === "search" && <p>質問に関連する資料が見つかりました。</p>}
               </>
             ) : turn.failure ? (
@@ -86,10 +85,12 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
               </>
             ) : (
               <>
-                <p className="message-status">
-                  <span className="activity-wave" aria-hidden="true"><span /></span>
-                  <span key={progressLabel} className="progress-caption">{progressLabel}</span>
-                </p>
+                <div className="message-status">
+                  <p>{progressLabels[stage]}</p>
+                  {searchDetail && (stage === "searching" || stage === "reviewing") &&
+                    <p className="progress-detail">{searchDetail}</p>}
+                  <span className="progress-track" aria-hidden="true"></span>
+                </div>
                 <p className="streaming-answer" aria-hidden="true" hidden={!turn.preview}>{turn.preview}</p>
               </>
             )}
@@ -114,7 +115,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
           )}
 
           {sources.length > 0 && (
-            <details className="sources" open={result?.mode === "search"}>
+            <details className="sources" open={result?.mode === "search" && !facts}>
               <summary>出典 {sources.length} 件</summary>
               <div className="sources-list">
                 {sources.map((source, index) => {
@@ -133,6 +134,13 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
                   );
                 })}
               </div>
+            </details>
+          )}
+
+          {facts && result?.answer && (
+            <details className="sources full-answer">
+              <summary>回答の全文</summary>
+              <div className="message-content full-answer-body"><AnswerText text={result.answer} /></div>
             </details>
           )}
 

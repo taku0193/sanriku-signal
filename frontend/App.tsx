@@ -12,10 +12,10 @@ const nicknameKey = "yamada-guide-nickname";
 const nicknameLimit = 24;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const examples = [
-  ["科学館の入館料", "鯨と海の科学館の大人の入館料は？"],
-  ["ごみの収集日", "大沢のプラスチックの収集日は？"],
-  ["道の駅の営業時間", "道の駅やまだは何時まで開いてる？"],
-  ["粗大ごみの予約", "粗大ごみの収集はどう予約する？"],
+  ["科学館へはどう行く？", "岩手船越駅からのアクセス", "岩手船越駅から鯨と海の科学館へはどう行けばいいですか？"],
+  ["ごみはいつ出せる？", "地区ごとの収集日", "うちの地区の次の燃やせるごみの日は？"],
+  ["科学館の入館料", "大人・学生・小中学生", "鯨と海の科学館の大人の入館料は？"],
+  ["科学館は何時まで？", "開館時間・休館日", "鯨と海の科学館の通常の開館時間と休館日を教えてください。"],
 ];
 
 function savedNickname(): string {
@@ -35,9 +35,8 @@ function pageUrls(offline: boolean) {
 
 export default function App({ offlineData }: { offlineData?: OfflineData }) {
   const [urls] = useState(() => pageUrls(Boolean(offlineData)));
-  const [nickname, setNickname] = useState(savedNickname);
-  const nicknameRef = useRef(nickname);
-  const [entryName, setEntryName] = useState(nickname);
+  const [entryName, setEntryName] = useState(savedNickname);
+  const nicknameRef = useRef(entryName);
   const [inChat, setInChat] = useState(false);
   const [mode, setMode] = useState(offlineData ? "資料検索モード" : "");
   const [entryError, setEntryError] = useState("");
@@ -209,7 +208,6 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     }
     if (nicknameRef.current !== name) resetConversation();
     nicknameRef.current = name;
-    setNickname(name);
     setEntryName(name);
     setEntryError("");
     try {
@@ -353,6 +351,11 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
           {brand}
           <div id="chat-header" className="header-actions">
             <p id="mode" className="mode" hidden={!mode}>{mode}</p>
+            <button id="new-chat" type="button" className="header-button" aria-label="新しい会話" onClick={newChat}>
+              <span className="plus" aria-hidden="true"></span><span>新規</span>
+            </button>
+            <button id="back-to-entry" type="button" className="header-button" aria-label="案内の入口へ戻る"
+              onClick={() => navigate(urls.entry)}>入口</button>
           </div>
         </div>
       </header>
@@ -373,25 +376,24 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
       </main>
 
       <main id="chat-screen" className="chat-screen" hidden={!inChat}>
-        <aside className="chat-rail" aria-label="会話の操作">
-          <button id="new-chat" type="button" className="new-chat" onClick={newChat}>
-            <span className="plus" aria-hidden="true"></span>新しい会話
-          </button>
-          <div className="chat-rail-bottom">
-            <p id="profile-name" className="profile-name">{nickname}</p>
-            <button id="back-to-entry" type="button" className="quiet-button" onClick={() => navigate(urls.entry)}>案内の入口へ戻る</button>
-          </div>
-        </aside>
         <div className="guide">
           <div className="chat-timeline">
             <div ref={scrollRegion} id="scroll-region" className="scroll-region" onScroll={updateJumpLatest}>
               <section id="welcome" className="chat-welcome content" aria-labelledby="chat-heading" hidden={hasTurns}>
-                <span className="brand-mark" aria-hidden="true"></span>
-                <h1 ref={chatHeading} id="chat-heading" tabIndex={-1}><span id="greeting-name">{nickname}</span>さん、こんにちは。</h1>
-                <p>山田町について、何を知りたいですか？</p>
-                <div className="examples" aria-label="質問例">
-                  {examples.map(([label, question]) => (
-                    <button key={question} className="example" type="button" onClick={() => void send(question, true)}>{label}</button>
+                <div className="welcome-photo">
+                  <img src={offlineData?.heroImage ?? "/sanriku-coast.webp"} alt="" />
+                  <div className="chat-welcome-copy">
+                    <p>岩手県山田町</p>
+                    <h1 ref={chatHeading} id="chat-heading" tabIndex={-1}>山田町で、<br />何を知りたいですか？</h1>
+                  </div>
+                </div>
+                <div className="suggestions-heading" id="examples-label">質問例</div>
+                <div className="examples" aria-labelledby="examples-label" role="group">
+                  {examples.map(([label, detail, question]) => (
+                    <button key={question} className="example" type="button" onClick={() => void send(question, true)}>
+                      <span className="example-text"><strong>{label}</strong><small>{detail}</small></span>
+                      <span className="example-arrow" aria-hidden="true">→</span>
+                    </button>
                   ))}
                 </div>
               </section>
@@ -424,13 +426,12 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
                   </button>
                   <button id="stop" className="send-button stop-button" type="button" aria-label="回答を停止" title="回答を停止" hidden={!busy}
                     onClick={() => active.current?.abort()}>
-                    <span className="stop-icon" aria-hidden="true"></span>
+                    <span className="stop-icon" aria-hidden="true"></span><span>停止</span>
                   </button>
                 </div>
                 <p id="form-error" className="form-error" role="alert" hidden={!formError}>{formError}</p>
               </form>
               <p className="composer-foot">
-                <span>学習用の試作です。最新情報は出典をご確認ください。</span>
                 <a href="https://www.town.yamada.iwate.jp/" target="_blank" rel="noopener">山田町公式サイト <span aria-hidden="true">↗</span></a>
               </p>
             </div>
