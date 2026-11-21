@@ -41,7 +41,7 @@ BREAKS = {"br", "p", "li", "dt", "dd", "div", "tr", "caption"}
 
 def source_url(url, origin):
     parts = urlsplit(urljoin(origin, url))
-    if parts.scheme != "https" or parts.netloc != urlsplit(origin).netloc:
+    if parts.scheme != "https" or parts.netloc.lower() != urlsplit(origin).netloc:
         return None
     return origin + parts.path
 
@@ -182,6 +182,34 @@ def passages(sections):
             yield heading, chunk
 
 
+def previous_documents(output, origin):
+    try:
+        with output.open(encoding="utf-8") as handle:
+            documents = json.load(handle)["documents"]
+    except FileNotFoundError:
+        return {}
+    previous = {}
+    for document in documents:
+        if url := source_url(document["url"], origin):
+            previous.setdefault(url, {**document, "url": url})
+    return previous
+
+
+def unique_record_ids(documents):
+    reserved = {record["id"] for document in documents for record in document["records"]}
+    used = set()
+    for document in documents:
+        for record in document["records"]:
+            original = record["id"]
+            if original in used:
+                suffix = 2
+                while f"{original}-duplicate-{suffix}" in reserved:
+                    suffix += 1
+                record["id"] = f"{original}-duplicate-{suffix}"
+                reserved.add(record["id"])
+            used.add(record["id"])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, help="確認用に取得する記事数を指定します。")
@@ -251,22 +279,37 @@ def main():
                     "category": body.category, "source": f"山田町観光協会「{title}」" if tourism else title,
                     "url": url, "checked": checked,
                     "published": body.date, "records": records,
-                }, None
-            return None, "見出しまたは本文を検出できませんでした。"
+                }, None, False
+            return None, "見出しまたは本文を検出できませんでした。", True
+        except HTTPError as error:
+            temporary = error.code in (408, 429) or 500 <= error.code < 600
+            return None, str(error), temporary
         except (OSError, HTTPException, ValueError) as error:
-            return None, str(error)
+            return None, str(error), True
 
-    documents, skipped = [], []
+    fresh, failed = {}, {}
     with ThreadPoolExecutor(max_workers=4) as workers:
-        for number, (url, (document, error)) in enumerate(zip(candidates, workers.map(read_article, candidates)), 1):
+        for number, (url, (document, error, temporary)) in enumerate(zip(candidates, workers.map(read_article, candidates)), 1):
             if document is not None:
-                documents.append(document)
+                fresh[url] = document
             else:
-                skipped.append({"url": url, "reason": error})
+                failed[url] = (error, temporary)
             if number % 100 == 0:
                 print(f"{number}/{len(candidates)}記事を確認", flush=True)
-    if not documents:
+    if not fresh:
         parser.exit(1, "本文を取得できる記事がありませんでした。\n")
+    try:
+        previous = previous_documents(output, origin) if any(temporary for _, temporary in failed.values()) else {}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.exit(1, f"前回の出力を読み込めませんでした。 {error}\n")
+    retained, skipped = {}, []
+    for url, (reason, temporary) in failed.items():
+        if temporary and url in previous:
+            retained[url] = previous[url]
+        skipped.append({"url": url, "reason": reason, "reused_previous": url in retained})
+    unique_record_ids([*fresh.values(), *retained.values()])
+    by_url = fresh | retained
+    documents = [by_url[url] for url in candidates if url in by_url]
     with NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=output.parent, prefix=output.stem + ".", suffix=".tmp", delete=False,
     ) as handle:
