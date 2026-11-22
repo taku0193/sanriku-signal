@@ -1,9 +1,10 @@
 import type { Pending, ProgressStage, QuestionAndAnswer } from "../frontend/types.js";
-import { normalize } from "../shared/knowledge.js";
+import { mentionsSubject, normalize, quotedSubject } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import {
-  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, findCollectionDays, fiscalYear, namedWasteTypes, singleDistrictHint, todayInTokyo,
+  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, explicitCollectionDates, findCollectionDays,
+  fiscalYear, hasCollectionYear, mentionedDistrict, namedWasteTypes, todayInTokyo,
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
@@ -20,6 +21,7 @@ const PRIOR_LIMIT = 300;
 const MAX_PRIOR_PASSAGES = 3;
 const TARGETS = ["official_documents", "collection_calendars"];
 const NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。";
+const INVALID_COLLECTION_DATE = "指定の日付はカレンダーにありません。年月日を確認して、もう一度教えてください。";
 const NO_LIVE_INFORMATION = "手元の資料では、現在の状況や当日の変更を確認できませんでした。施設や運営元、町の最新のお知らせをご確認ください。";
 const OUTSIDE_SCOPE = "岩手県山田町の観光や暮らしを案内しています。山田町に関係する内容をお尋ねください。";
 const INSTRUCTIONS = readTextFile("prompts/react.md").trimEnd()
@@ -82,6 +84,11 @@ interface TurnState {
   follow_up?: { asked: string; reply: string };
   search_wording?: { question?: string; reply?: string };
   collection_hints?: CollectionHints;
+  collection_excluded?: true;
+  quoted_subject?: string;
+  resolved_name?: string;
+  reference_question?: string;
+  round_trip_counts?: string[];
   remaining_searches?: number;
 }
 
@@ -116,11 +123,12 @@ function knownSourceIds(value: unknown, evidence: ReadonlyMap<string, unknown>):
     value.every((id) => typeof id === "string" && evidence.has(id));
 }
 
-export function readGroundedPrefix(content: string, evidence: ReadonlyMap<string, unknown>): string {
+export function readGroundedPrefix<T>(content: string, evidence: ReadonlyMap<string, T>, matches?: (record: T) => boolean): string {
   const prefix = /^\s*\{\s*"action"\s*:\s*"answer"\s*,\s*"sources"\s*:\s*(\[(?:[^"\]]|"(?:[^"\\]|\\.)*")*\])\s*,\s*"answer"\s*:\s*"/.exec(content);
   if (!prefix) return "";
   try {
-    if (!knownSourceIds(JSON.parse(prefix[1]), evidence)) return "";
+    const ids: unknown = JSON.parse(prefix[1]);
+    if (!knownSourceIds(ids, evidence) || (matches && !ids.some((id) => matches(evidence.get(id)!)))) return "";
     const escaped = /^(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*/.exec(content.slice(prefix[0].length))![0];
     const answer = (JSON.parse('"' + escaped + '"') as string).replace(/[\uD800-\uDBFF]$/, "");
     return /[\uD800-\uDFFF]/u.test(answer) ? "" : answer.trimStart();
@@ -130,10 +138,11 @@ export function readGroundedPrefix(content: string, evidence: ReadonlyMap<string
   }
 }
 
-export function streamGroundedAnswer(evidence: ReadonlyMap<string, unknown>, onDelta: (text: string) => void) {
+export function streamGroundedAnswer<T>(evidence: ReadonlyMap<string, T>, onDelta: (text: string) => void,
+                                        matches?: (record: T) => boolean) {
   let emitted = "";
   return (content: string) => {
-    const answer = readGroundedPrefix(content, evidence);
+    const answer = readGroundedPrefix(content, evidence, matches);
     if (answer.length > emitted.length && answer.startsWith(emitted)) {
       onDelta(answer.slice(emitted.length));
       emitted = answer;
@@ -151,12 +160,13 @@ function formatPromptJson(value: unknown): string {
 const sentences = new Intl.Segmenter("ja", { granularity: "sentence" });
 
 function omitUnaskedDailySchedule(answer: string, wording: string) {
-  const timing = /営業|開館|休館|閉館|開[いくきけ]|休み|定休日|何時|いつ|何曜日|日中|今から|今朝|今夜|今日|本日|明日|当日|きょう|あした|現在|平日|休日|週末|祝日|[月火水木金土日]曜|\d+[月日時]/;
+  const timing = /営業|開館|休館|閉館|開[いくきけ]|休み|定休日|何時|いつ|何曜日|日中|午前|午後|夕方|今から|今朝|今夜|今日|本日|明日|当日|きょう|あした|現在|平日|休日|週末|祝日|[月火水木金土日]曜|\d+[月日時]/;
   if (timing.test(normalize(wording))) return answer;
   return [...sentences.segment(answer)].filter(({ segment }) => {
     const dated = /(?:本日|今日|明日)(?:は|の|も|[（(、])/.test(segment);
     const operating = /営業|開館|休館|閉館|開店|閉店|休業/.test(segment);
-    return !dated || !operating;
+    const hours = /(?:営業|開館|閉館|開店|閉店)時間|休館日|定休日/.test(segment);
+    return !hours && (!dated || !operating);
   }).map(({ segment }) => segment).join("").trim();
 }
 
@@ -172,12 +182,19 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     };
     const expandable = state.expandable_source_ids;
     const wording = state.question + " " + (state.follow_up?.reply ?? "");
+    const normalizedWording = normalize(wording);
     const checkConstraints = !state.collection_hints &&
-      /以外|いがい(?:で|の)|を除[くい]|抜きで|が使えない|できない場合/u.test(normalize(wording));
+      /以外|いがい(?:で|の)|を除[くい]|抜きで|が使えない|できない場合/u.test(normalizedWording);
+    const applyThreshold = /\d+\s*(?:人|名|歳|か月|ヶ月)(?:で|と|に|の|以上|未満)|(?:小学|中学|高校)\d年/.test(normalizedWording);
+    const missingRequirement = /(?:用意|準備|持参|提示|提出)できな(?:い|く)/.test(normalizedWording);
+    const asksReservation = /予約(?:が|は)?(?:必要|必須|いり|いる)|要予約/.test(normalizedWording);
     const stream = checkConstraints ? undefined : onContent;
     const properties = {
       action: { type: "string", enum: actions },
-      target: { type: "string", enum: expandable?.length ? [...TARGETS, "source_details"] : TARGETS },
+      target: { type: "string", enum: [
+        ...TARGETS.filter((target) => !state.collection_excluded || target !== "collection_calendars"),
+        ...(expandable?.length ? ["source_details"] : []),
+      ] },
       strategy: { type: "string", enum: state.search_strategies },
       ...(expandable?.length ? { source_id: { type: "string", enum: expandable } } : {}),
       query: { type: "string" },
@@ -197,6 +214,13 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     const instructions = [
       INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(checkConstraints ? [CONSTRAINT_INSTRUCTIONS] : []),
       ...(state.search_wording ? [SEARCH_WORDING_INSTRUCTIONS] : []),
+      ...(state.quoted_subject ? ["quoted_subject は質問された固有名です。この名称や確認済みの別名が出る資料を探します。異なる名称の資料から創刊日、公開年、料金などを転用しません。"] : []),
+      ...(state.resolved_name ? ["resolved_name は資料検索に使った正式表記です。資料で同じ対象を確認できたら、回答の最初に正式表記を書きます。"] : []),
+      ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。回答本文には通常時の情報だけを書きます。当日・将来の状況が確認できない旨はアプリが追記します。"] : []),
+      ...(state.round_trip_counts ? ["round_trip_counts は利用者が示した往復回数を片道回数に換算した結果です。資料の上限が片道単位なら換算後の回数に、追加分を足して上限と比べます。"] : []),
+      ...(applyThreshold ? ["資料の人数や年齢の境目に利用者の条件を当てはめ、適用される区分を資料の表記で伝えます。団体料金の人数に満たない場合は、資料にあれば1人あたりの通常料金も金額で示します。代替の制度は、その利用条件まで確認できる資料があるときに案内します。"] : []),
+      ...(missingRequirement ? ["書類や保証人などの要件を満たせない場合は query に元の手続きの正式名を残し、不足時の手順を探します。通常の要件に加え、代わりの手順や所要日数を確認して案内します。別の手続きの情報は省きます。"] : []),
+      ...(asksReservation ? ["予約の要否が質問されています。資料で前日や何日前までの申込みが条件だと確認できた場合は『事前予約が必要です』と先に答え、期限と方法を続けます。"] : []),
       ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(stream ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
     const decision = await chatJson({
@@ -244,21 +268,21 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
   };
 }
 
-function asksReservationDeadline(text: string) {
-  return /申[し込]|予約|受付/.test(text) && /(?:何日|いつ|何時)まで/.test(text);
-}
+const COLLECTION_DATE = /収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/;
+const EXCLUDED_COLLECTION_DATE = /(?:収集日(?:程)?|回収日|ごみの日)(?:の質問)?(?:では(?:なく|ありませ(?:ん)?|ない)|は(?:聞いてい|知りたく)ない|以外)/g;
+const WASTE_PROCEDURE = /(?:申[し込]|予約|受付).{0,24}(?:締[め切]|期限|何日まで|いつまで|何時まで|方法|どう)|分別(?:方法|を確認|を知|を教)|分け方|出し方/;
+const LIVE_STATUS = /混雑|行列|並ん|待ち時間|空席|空き|予約が取れ|運休|臨時|遅れ|開設/;
 
 function asksCollectionDate(text: string) {
-  const query = normalize(text);
-  if (/収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/.test(query)) return true;
-  if (asksReservationDeadline(query)) return false;
+  const query = normalize(text).replace(EXCLUDED_COLLECTION_DATE, "");
+  if (COLLECTION_DATE.test(query)) return true;
+  if (WASTE_PROCEDURE.test(query)) return false;
   if (/創刊|発行|刊行|出版/.test(query) && !/ごみ|収集|回収|出[すせ]|捨て|処分/.test(query)) return false;
   return (/ごみ|ぺっとぼとる|蛍光灯/.test(query) || namedWasteTypes(query).length > 0) &&
     /今日|(?<!とう)きょう|明日|あした|次回|次の|つぎの|何日|何曜日|[0-9]+月|いつ(?!までに)/.test(query);
 }
 
-function collectionHints(wording: string[]): CollectionHints {
-  const district = singleDistrictHint(wording);
+function collectionHints(wording: string[], district = mentionedDistrict(wording)?.district): CollectionHints {
   for (const phrase of wording) {
     const types = namedWasteTypes(phrase);
     if (types.length) return { district, waste_types: types };
@@ -267,6 +291,29 @@ function collectionHints(wording: string[]): CollectionHints {
   const allTypes = wording.some((phrase) =>
     /(?:^|の|で)(?:次(?:の|回の))?ごみ(?:の?収集日|の日|はいつ)/.test(normalize(phrase)));
   return { district, ...(allTypes ? { waste_types: [] } : {}) };
+}
+
+function referenceQuestion(question: string) {
+  const text = normalize(question);
+  if (!/今日|明日|今朝|今夜|現在|当日|今[、の]|午[前後]/.test(text) || !LIVE_STATUS.test(text)) return undefined;
+  const reference = /(?:通常|一般|普段)(?:時|の)?[^、。?\n]{0,16}(?:料金|入館料|開館時間|営業時間|閉館時刻|予約締切|受付時間|運行時刻)/.exec(text)?.[0];
+  if (!reference) return undefined;
+  const status = /混雑|行列|並ん|待ち時間/.test(text) ? "混雑や待ち時間" :
+    /空席|空き|予約が取れ/.test(text) ? "空き状況" : "臨時の変更や当日の状況";
+  return { reference, notice: `ご指定の日時の${status}は、登録資料からは確認できません。` };
+}
+
+function citationSources(decision: Record<string, unknown>, evidence: ReadonlyMap<string, SourceRecord>, wording: string) {
+  if (!knownSourceIds(decision.sources, evidence)) return [];
+  const sources = [...new Set(decision.sources)].map((id) => evidence.get(id)!);
+  const station = /([\p{Script=Han}\p{Script=Katakana}]+駅)が最寄り/u.exec(wording)?.[1];
+  if (station && /どちら|比較|比べ/.test(wording)) {
+    const isAccess = (record: SourceRecord) => record.text.slice(0, EXCERPT_LIMIT).includes(station) &&
+      /徒歩|隣接|最寄り/.test(record.text.slice(0, EXCERPT_LIMIT));
+    const access = [...evidence.values()].find((record) => isAccess(record) && sources.some(({ url }) => url === record.url));
+    if (access && !sources.some(isAccess)) sources.push(access);
+  }
+  return sources;
 }
 
 function compactText(text: string) {
@@ -369,9 +416,30 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     };
   }
   const wording = pending ? [searchReply, searchQuestion] : [searchQuestion];
-  let calendarQuestion = asksCollectionDate(wording.join("\n"));
+  const queryText = wording.join("\n");
+  let calendarQuestion = pending?.field === "district" || asksCollectionDate(queryText);
   const repeatedQuestion = !pending && history?.some((turn) => normalize(turn.question) === normalize(question));
-  if (calendarQuestion) state.collection_hints = collectionHints(wording);
+  if (!calendarQuestion && (WASTE_PROCEDURE.test(normalize(queryText)) || COLLECTION_DATE.test(normalize(queryText)))) {
+    state.collection_excluded = true;
+  }
+  const subject = calendarQuestion ? undefined : quotedSubject(state.question) ?? (pending ? quotedSubject(reply) : undefined);
+  const canonical = subject && (resolveName?.(subject) ?? resolveName?.(normalizeQuery(subject)));
+  state.quoted_subject = subject;
+  state.resolved_name = namedSubject;
+  const mixedQuestion = referenceQuestion(queryText);
+  state.reference_question = mixedQuestion?.reference;
+  if (queryText.includes("片道")) {
+    const counts = [...queryText.matchAll(/(?:^|[^\d.])(\d{1,6})\s*往復/g)]
+      .map(([, count]) => `${count}往復は片道${Number(count) * 2}回`);
+    if (counts.length) state.round_trip_counts = counts;
+  }
+
+  function matchesSubject(record: SourceRecord) {
+    if (!subject) return true;
+    const excerpt = record.text.slice(0, exposedLengths.get(record.id) ?? EXCERPT_LIMIT);
+    return [record.title, ...(record.names ?? []), excerpt].some((text) =>
+      mentionsSubject(text, subject) || Boolean(canonical && mentionsSubject(text, canonical)));
+  }
 
   const evidence = new Map<string, SourceRecord>();
   const exposedLengths = new Map<string, number>();
@@ -393,20 +461,43 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     };
   }
 
+  if (calendarQuestion) {
+    let dates: ReturnType<typeof explicitCollectionDates>;
+    try {
+      dates = explicitCollectionDates(wording);
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      onAction?.({ action: "insufficient" });
+      return { action: "insufficient", answer: INVALID_COLLECTION_DATE, sources: [], pending: null };
+    }
+    if (dates && !hasCollectionYear(fiscalYear(dates[0]))) {
+      onAction?.({ action: "insufficient" });
+      return { action: "insufficient", answer: NO_COLLECTION_DATES, sources: [], pending: null };
+    }
+    const district = mentionedDistrict(wording);
+    if (district && district.choices.length > 1) {
+      onAction?.({ action: "clarify" });
+      return clarify(`「${district.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", district.district);
+    }
+    state.collection_hints = collectionHints(wording, district?.district);
+  }
+
   const previous = new Map<string, LookupResult>();
   let ambiguity: AmbiguousDistrict | undefined;
   let searches = 0;
   let searchDetail: string | undefined;
   let insufficientReason: unknown;
+  let referenceOnly: string | undefined;
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
+    const subjectObserved = !subject || [...evidence.values()].some(matchesSubject);
     const canClarifyDistrict = calendarQuestion && !state.collection_hints?.district;
-    const canClarifyCondition = !calendarQuestion && !pending;
-    const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject);
+    const canClarifyCondition = !calendarQuestion && !pending && subjectObserved;
+    const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject || subject || state.reference_question);
     const actions: Action[] = needsSearch ? [] : ["insufficient"];
     if (!needsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
-    if (evidence.size) actions.push("answer");
+    if (evidence.size && subjectObserved) actions.push("answer");
     const remaining = Math.min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1);
     if (remaining) actions.push("search");
     state.remaining_searches = remaining;
@@ -422,15 +513,26 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       }))
       : undefined;
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
-    const stream = onDelta && evidence.size && !calendarQuestion ? streamGroundedAnswer(evidence, onDelta) : undefined;
-    const decision = await decide(state, actions, signal, stream);
+    const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion
+      ? streamGroundedAnswer(evidence, onDelta, subject ? matchesSubject : undefined) : undefined;
+    const decision = await decide(referenceOnly
+      ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
+      : state, actions, signal, stream);
     const action = actions.find((allowed) => allowed === decision.action);
     if (!action) break;
 
     if (action === "search") {
-      const searchDecision = namedSubject && !state.observations.length && decision.target === "official_documents"
-        ? { ...decision, query: namedSubject } : decision;
-      const event: SearchEvent = { action, target: decision.target, status: "invalid", source_ids: [] };
+      const target = decision.target === "collection_calendars" && state.collection_excluded
+        ? "official_documents" : decision.target;
+      let searchDecision = target === decision.target ? decision : { ...decision, query: searchQuestion };
+      if (target === "official_documents" && !state.observations.length) {
+        const query = trimString(searchDecision.query);
+        if (namedSubject) searchDecision = { ...searchDecision, query: namedSubject };
+        else if (subject && !mentionsSubject(query, subject) && !(canonical && mentionsSubject(query, canonical))) {
+          searchDecision = { ...searchDecision, query: `${canonical ?? subject} ${searchQuestion}` };
+        }
+      }
+      const event: SearchEvent = { action, target, status: "invalid", source_ids: [] };
       const missing = trimString(decision.missing_fact);
       if (missing) event.missing_fact = [...compactText(missing)].slice(0, 60).join("");
       if (event.target === "collection_calendars") {
@@ -484,10 +586,19 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       continue;
     }
 
+    if (action === "insufficient" && decision.reason === "live_information" && mixedQuestion &&
+        !referenceOnly && step + 1 < MAX_DECISIONS) {
+      const observed = state.observations.find(({ target, status, query }) =>
+        target === "official_documents" && status === "found" && query && !LIVE_STATUS.test(normalize(query)));
+      if (observed?.query) {
+        referenceOnly = `${observed.query}。${mixedQuestion.reference}を資料から教えてください。`;
+        continue;
+      }
+    }
+
     onAction?.({ action });
     const answer = trimString(decision.answer);
-    const sources = knownSourceIds(decision.sources, evidence)
-      ? [...new Set(decision.sources)].map((id) => evidence.get(id)!) : [];
+    const sources = citationSources(decision, evidence, wording.join("\n"));
     if (ambiguity) return clarify(`「${ambiguity.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", ambiguity.district);
     if (action === "clarify" && decision.field === "district" && canClarifyDistrict) {
       return clarify("山田町内のどの地区か教えてください。", "district", hint);
@@ -503,7 +614,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         if (additional && dates.length < sources.length) dates.push(additional);
         return { action, answer: dates.join("\n\n"), sources, pending: null };
       }
-      if (answer && !calendarQuestion) return { action, answer, sources, pending: null };
+      if (answer && !calendarQuestion && sources.some(matchesSubject)) {
+        return { action, answer: mixedQuestion ? `${answer}\n\n${mixedQuestion.notice}` : answer, sources, pending: null };
+      }
     }
     if (action === "insufficient") insufficientReason = decision.reason;
     break;
@@ -514,6 +627,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   const answer = calendarQuestion ? NO_COLLECTION_DATES
     : insufficientReason === "live_information" ? NO_LIVE_INFORMATION
     : insufficientReason === "outside_scope" ? OUTSIDE_SCOPE
+    : subject ? `「${subject}」について、登録した資料からは回答の根拠を確認できませんでした。`
     : NO_EVIDENCE;
   return { action: "insufficient", answer, sources: [], pending: null };
 }

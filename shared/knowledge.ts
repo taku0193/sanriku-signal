@@ -34,6 +34,15 @@ function nameText(text: string): string {
   return normalize(text).replace(/[\s\p{P}]/gu, "");
 }
 
+export function quotedSubject(question: string) {
+  const mentions = [...question.matchAll(/[「『]([^「『」』]+)[」』](?!\s*(?:以外|を除|ではなく|じゃなく))/gu)];
+  return mentions.length === 1 && nameText(mentions[0][1]).length >= 3 ? mentions[0][1] : undefined;
+}
+
+export function mentionsSubject(text: string, subject: string) {
+  return nameText(text).includes(nameText(subject));
+}
+
 function nameSubject(compact: string): string {
   return compact.replace(/(?:(?:って|とは|について)(?:何|なに|教えて|おしえて)?(?:ですか|ください)?|は(?:何|なに)(?:ですか)?)$/u, "");
 }

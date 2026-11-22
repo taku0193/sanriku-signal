@@ -112,7 +112,7 @@ function districtMentions(wording: string[], names: Iterable<string>) {
     const mentioned: string[] = [];
     for (const key of keys) {
       const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (new RegExp(escaped + "(?![0-9区])").test(normalized) &&
+      if (new RegExp(escaped + "(?![0-9区])(?!(?:以外|を除|ではなく|は含めず|や[^、。?!]{1,20}は除))").test(normalized) &&
           !mentioned.some((longer) => longer.includes(key))) mentioned.push(key);
     }
     if (mentioned.length) return mentioned;
@@ -120,12 +120,22 @@ function districtMentions(wording: string[], names: Iterable<string>) {
   return [];
 }
 
-export function singleDistrictHint(wording: string[]) {
+export function mentionedDistrict(wording: string[]) {
   const byName = districtIndex();
   const mentioned = districtMentions(wording, byName.keys());
   if (mentioned.length !== 1) return undefined;
-  const [name] = mentioned;
-  if (new Set(byName.get(name)!.map(({ district }) => district)).size === 1) return name;
+  const district = mentioned[0];
+  const choices = [...new Set(byName.get(district)!.map((row) => row.district))];
+  return { district, choices };
+}
+
+export function singleDistrictHint(wording: string[]) {
+  const mention = mentionedDistrict(wording);
+  return mention?.choices.length === 1 ? mention.district : undefined;
+}
+
+export function hasCollectionYear(year: number) {
+  return readJsonFile<Calendar[]>("collection_calendars.json").some((calendar) => calendar.fiscal_year === year);
 }
 
 function resolveDistrict(district: string, year: number, wording: string[]) {
@@ -144,37 +154,37 @@ function resolveDistrict(district: string, year: number, wording: string[]) {
   return matches[0];
 }
 
-function explicitBounds(wording: string[]): [string, string] | undefined {
+export function explicitCollectionDates(wording: string[]): [string, string] | undefined {
   for (const phrase of wording) {
     const text = phrase.normalize("NFKC");
-    const dates = [...text.matchAll(/(?<![0-9])([0-9]{4})年\s*([0-9]{1,2})月(?:\s*の?\s*([0-9]{1,2})日)?/g)];
-    const first = dates[0];
-    if (!first) continue;
-    if (dates.length > 1 || /^\s*(?:から|まで|以降|以後|より|[〜~～])/.test(text.slice(first.index! + first[0].length))) {
-      throw new RangeError("指定期間の開始日と終了日が必要です。");
-    }
-    const [year, month] = [Number(first[1]), Number(first[2])];
-    const start = checkedDate(monthStart(year, month));
-    if (first[3]) {
-      const date = checkedDate(start.slice(0, 8) + first[3].padStart(2, "0"));
-      return [date, date];
-    }
-    const following = month === 12 ? monthStart(year + 1, 1) : monthStart(year, month + 1);
-    return [start, shiftDay(following, -1)];
+    const dates = [...text.matchAll(/(?<![0-9])([0-9]{4})年\s*([0-9]{1,2})月(?:\s*の?\s*([0-9]{1,2})日)?/g)].map((match) => {
+      const year = Number(match[1]), month = Number(match[2]);
+      const start = checkedDate(monthStart(year, month));
+      const date = match[3] && checkedDate(start.slice(0, 8) + match[3].padStart(2, "0"));
+      return { start, date, month, year, endOfMention: match.index! + match[0].length };
+    });
+    if (!dates.length) continue;
+    const [first] = dates;
+    const rest = text.slice(first.endOfMention);
+    if (dates.length > 1 || /^\s*(?:から|まで|以降|以後|より|[〜~～])/.test(rest)) return;
+    if (first.date) return [first.date, first.date];
+    if (/^\s*(?:の)?(?:上旬|中旬|下旬|第[\d一二三四五]|最初|最後|[月火水木金土日]曜)/.test(rest)) return;
+    const following = first.month === 12 ? monthStart(first.year + 1, 1) : monthStart(first.year, first.month + 1);
+    return [first.start, shiftDay(following, -1)];
   }
 }
 
 export function collectionBounds(decision: Record<string, unknown>, today: string, wording: string[]) {
+  const stated = explicitCollectionDates(wording);
+  if (stated) return { year: fiscalYear(stated[0]), start: stated[0], end: stated[1] };
   const hasDates = Object.hasOwn(decision, "start_date") || Object.hasOwn(decision, "end_date");
   const period = Object.hasOwn(decision, "period") ? decision.period : hasDates ? "period" : "next";
   if (!COLLECTION_PERIODS.some((allowed) => allowed === period) || (hasDates && period !== "period")) {
     throw new RangeError("収集日の期間が無効です。");
   }
-  const stated = !hasDates && !Object.hasOwn(decision, "period") ? explicitBounds(wording) : undefined;
   let start = today;
   let end: string | undefined;
-  if (stated) [start, end] = stated;
-  else if (period === "next") start = shiftDay(today, 1);
+  if (period === "next") start = shiftDay(today, 1);
   else if (period === "today" || period === "tomorrow") {
     start = period === "today" ? today : shiftDay(today, 1);
     end = start;
@@ -183,7 +193,8 @@ export function collectionBounds(decision: Record<string, unknown>, today: strin
     end = Object.hasOwn(decision, "end_date") ? checkedDate(decision.end_date) : start;
     if (start > end) throw new RangeError("収集日の期間が逆です。");
   }
-  const year = Object.hasOwn(decision, "fiscal_year") ? decision.fiscal_year : fiscalYear(start);
+  const year = (period === "fiscal_year" || period === "next") && Object.hasOwn(decision, "fiscal_year")
+    ? decision.fiscal_year : fiscalYear(start);
   if (typeof year !== "number" || !Number.isInteger(year) || year < 1 || year >= 9999) {
     throw new RangeError("収集日程表の年度が無効です。");
   }

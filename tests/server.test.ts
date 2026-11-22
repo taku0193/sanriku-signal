@@ -72,6 +72,43 @@ test("固有名や読みから、地域資料と同名の作品を照合する",
   assert.equal(newspaper.action, "answer");
 });
 
+test("指定された作品名を確認できない資料から本文を配信しない", async () => {
+  const play = records.find(({ id }) => id === "md-umi-yo-hikare-play")!;
+  const fees = records.find(({ id }) => id === "museum-fees")!;
+  const chunks: string[] = [];
+  for (const title of ["波よ光れ", "海よ光れ"]) {
+    const result = await runTurn(`学校劇『${title}』は何年に始まりましたか？`, async (state, actions, _signal, stream) => {
+      if (!state.observations.length) return { action: "search", target: "official_documents", query: "学校劇 海よ光れ" };
+      assert.ok(state.observations[0].query?.includes(title));
+      assert.equal(actions.includes("answer"), title === "海よ光れ");
+      const decision = { action: "answer", sources: [fees.id], answer: "1988年からです。" };
+      stream?.(JSON.stringify(decision));
+      return decision;
+    }, async () => ({ records: [play, fees], mode: "keyword" }), { onDelta: (chunk) => chunks.push(chunk) });
+    assert.equal(result.action, "insufficient");
+    assert.deepEqual(result.sources, []);
+  }
+  assert.deepEqual(chunks, []);
+});
+
+test("通常料金に出典を付け、当日の混雑を確認できる範囲を伝える", async () => {
+  const question = "明日の鯨と海の科学館に何人並んでいるかと、大人の通常料金を教えて。";
+  const result = await runTurn(question, async (state, actions, _signal, stream) => {
+    assert.equal(state.reference_question, "通常料金");
+    assert.equal(stream, undefined);
+    if (!state.observations.length) {
+      assert.deepEqual(actions, ["search"]);
+      return searchMuseum;
+    }
+    if (state.question === question) return { action: "insufficient", reason: "live_information" };
+    assert.match(state.question, /鯨と海の科学館.*通常料金/);
+    assert.doesNotMatch(state.question, /明日|何人/);
+    return { action: "answer", answer: "大人の通常料金は300円です。", sources: ["museum-fees"] };
+  }, keyword, { onDelta: () => assert.fail("確認前の回答を配信した") });
+  assert.match(result.answer, /300円.*混雑や待ち時間.*確認できません/s);
+  assert.equal(result.sources[0].id, "museum-fees");
+});
+
 test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", async () => {
   const first = await runTurn("料金はいくらですか？", async () => ({
     action: "clarify", field: "condition", answer: "どの施設の料金ですか？",
@@ -244,6 +281,47 @@ test("ひらがなの地区名と区番号を照合し、地区の曖昧さを�
   assert.match(result.answer, /燃やせないごみ.*2026年12月18日/);
   assert.doesNotMatch(result.answer, /・燃やせるごみ　/);
   assert.equal(singleDistrictHint([normalizeQuery("ふなこしのごみのしゅうしゅうび")]), undefined);
+});
+
+test("暦の日付から年度を確定し、存在しない日付と未収録年度を検索前に判定する", async () => {
+  const today = "2026-11-22";
+  const input = "2027年1月2日、大沢で燃やせるごみの収集はありますか？";
+  const result = await runTurn(input, async (state) => state.observations.length
+    ? { action: "answer", sources: ["calendar-2026-osawa"] }
+    : { action: "search", target: "collection_calendars", period: "period", start_date: "2027-01-02", fiscal_year: 2027 },
+  keyword, { today });
+  assert.equal(result.action, "answer");
+  assert.match(result.answer, /2027年1月2日.*1月1日〜3日は収集休止/s);
+  assert.equal(result.sources[0].id, "calendar-2026-osawa");
+
+  for (const [date, expected] of [["2026年2月30日", /日付/], ["2031年12月", /確認できません/]] as const) {
+    const invalid = await runTurn(`大沢の${date}の不燃ごみの収集日は？`, async () => assert.fail("日程は確定できない"), keyword, { today });
+    assert.equal(invalid.action, "insufficient");
+    assert.match(invalid.answer, expected);
+    assert.deepEqual(invalid.sources, []);
+  }
+
+  const ambiguous = await runTurn("羽々の下ですが大沢やほかの集積所は除いて、燃やせないごみの日程を教えて。",
+    async () => assert.fail("目印を聞く必要がある"), keyword, { today });
+  assert.equal(ambiguous.pending?.district_hint, "羽々の下");
+});
+
+test("収集日を除外した分別や予約締切の質問は一般資料で調べる", async () => {
+  const cases = [
+    ["大沢の粗大ごみ収集の申込みは何日締切？収集日の質問ではありません。", "oversized-waste", "収集月の20日までです。"],
+    ["割れた蛍光管は大沢の収集日ではなく分別を確認したい。", "md-waste-batteries-and-lamps", "紙で包んで燃やせないごみとして出します。"],
+  ];
+  for (const [question, source, answer] of cases) {
+    const result = await runTurn(question, async (state) => {
+      assert.equal(state.collection_hints, undefined);
+      assert.equal(state.collection_excluded, true);
+      if (!state.observations.length) return { action: "search", target: "collection_calendars" };
+      assert.equal(state.observations[0].target, "official_documents");
+      return { action: "answer", sources: [source], answer };
+    }, keyword);
+    assert.equal(result.answer, answer);
+    assert.equal(result.sources[0].id, source);
+  }
 });
 
 test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) => {
