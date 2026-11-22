@@ -100,4 +100,4 @@ Gemmaの行動をOllamaの構造化JSON出力で受け、サーバーが `search
 
 ## 評価
 
-`npm run evaluate:server` で、Webと同じTypeScriptのReActを使う。23問で回答・出典・行動を確認し、19問で必要な資料が検索の上位3件に入る割合を測る。出典IDの照合で、Gemmaが引用した資料を実際に取得したことを確認する。回答中の各主張が資料に沿っているかは、実際の回答と資料を照らし合わせる。 [設計調査ノート](agentic-rag-research.md)
+`npm run evaluate:server` で、Webと同じTypeScriptのReActを使う。34問で回答・出典・行動を確認し、19問で必要な資料が検索の上位3件に入る割合を測る。出典IDの照合で、Gemmaが引用した資料を実際に取得したことを確認する。回答中の各主張が資料に沿っているかは、実際の回答と資料を照らし合わせる。 [設計調査ノート](agentic-rag-research.md)

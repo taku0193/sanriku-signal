@@ -117,7 +117,7 @@ python3 yamada_rag.py --model --trace --baseline '岩手船越駅が最寄りの
 
 ## 4. 回答と出典をまとめて評価する
 
-Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらし・交通の23問で評価します。検索方式ごとに19問の上位3件を照合します。
+Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらし・子育て・交通・防災などの34問で評価します。検索方式ごとに19問の上位3件を照合します。
 
 ```bash
 npm run evaluate:server -- --output /tmp/sanriku-evaluation.json
