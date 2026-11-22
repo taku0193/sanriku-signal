@@ -159,5 +159,54 @@
     "kind": "paraphrase",
     "question": "山田町の国保に入っています。マイナ保険証がない場合、病院で何を使いますか？",
     "expected_sources": [["md-national-health-insurance-card", "town-7795-1", "town-7795-2"]]
+  },
+  {
+    "id": "fixed-bus-yamada-station-hospital",
+    "category": "交通",
+    "kind": "exact",
+    "question": "山田駅前から山田病院への山田町内線の定期便は朝8時台にありますか？",
+    "expected_sources": [["md-yamada-local-fixed-bus"]]
+  },
+  {
+    "id": "rental-cycle-aragami-time",
+    "category": "観光",
+    "kind": "exact",
+    "question": "陸中山田駅から荒神海水浴場までレンタサイクルでの所要時間は？",
+    "expected_sources": [["md-rental-cycle-routes"]]
+  },
+  {
+    "id": "rental-cycle-before-a-ride",
+    "category": "観光",
+    "kind": "multi_source",
+    "question": "陸中山田駅のレンタサイクルを4時間借りる料金と、荒神海水浴場までの所要時間を教えてください。",
+    "expected_sources": [["md-rental-cycle-yamada"], ["md-rental-cycle-routes"]]
+  },
+  {
+    "id": "nursery-monthly-work-hours-2027",
+    "category": "子育て",
+    "kind": "paraphrase",
+    "question": "令和9年度に山田町の保育園へ入る場合、パートは月に何時間働けば保育認定になりますか？",
+    "expected_sources": [["md-nursery-work-requirements-2027"]]
+  },
+  {
+    "id": "pet-evacuation-shelters-2026",
+    "category": "防災",
+    "kind": "paraphrase",
+    "question": "山田町で犬と一緒に避難する人の専用エリアがある避難所は？",
+    "expected_sources": [["md-pet-evacuation-shelters-2026"]]
+  },
+  {
+    "id": "sports-park-winter",
+    "category": "公共施設",
+    "kind": "exact",
+    "question": "町民総合運動公園の野球場とテニス場はいつ冬期閉鎖になりますか？",
+    "expected_sources": [["md-sports-park-winter"]]
+  },
+  {
+    "id": "town-bulletin-frequency-2026",
+    "category": "広報",
+    "kind": "exact",
+    "question": "2026年4月から広報やまだは毎月何回発行されますか？",
+    "expected_sources": [["md-town-bulletin-frequency-2026"]]
   }
 ]

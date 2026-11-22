@@ -499,5 +499,101 @@
     "expected_answer": "資格確認書を使う。",
     "required_patterns": ["資格確認書"],
     "required_sources": {"md-national-health-insurance-card": "https://www.town.yamada.iwate.jp/docs/7795.html"}
+  },
+  {
+    "id": "fixed-bus-yamada-station-hospital",
+    "category": "交通",
+    "question": "山田駅前から山田病院への山田町内線の朝8時台の定期便は何時発・何時着ですか？",
+    "expected_answer": "山田駅前8:05発、山田病院8:11着。",
+    "required_patterns": ["(?:8[:時]0?5|8時5分)", "(?:8[:時]11|8時11分)"],
+    "required_sources": {"md-yamada-local-fixed-bus": "https://www.iwate-kenpokubus.co.jp/wp/wp-content/uploads/20261001%E5%B1%B1%E7%94%B0%E7%94%BA%E7%94%BA%E5%86%85%E7%B7%9A.pdf#page=1"}
+  },
+  {
+    "id": "fixed-bus-holiday-exceptions",
+    "category": "交通",
+    "question": "山田駅前16時54分発で鯨科学館前に行くF03は土日祝も運行しますか？",
+    "expected_answer": "F03は土曜・日曜・祝日が運休。",
+    "required_patterns": ["(?:土日祝|土曜.*日曜.*祝日|土・日・祝)", "運休|運行しませ"],
+    "required_sources": {"md-yamada-local-fixed-bus": "https://www.iwate-kenpokubus.co.jp/wp/wp-content/uploads/20261001%E5%B1%B1%E7%94%B0%E7%94%BA%E7%94%BA%E5%86%85%E7%B7%9A.pdf#page=1"}
+  },
+  {
+    "id": "rental-cycle-aragami-time",
+    "category": "観光",
+    "question": "陸中山田駅で借りたレンタサイクルで荒神海水浴場まで何分くらいかかりますか？",
+    "expected_answer": "陸中山田駅から荒神海水浴場まで自転車で約35分。",
+    "required_patterns": ["荒神海水浴場", "35\\s*分"],
+    "required_sources": {"md-rental-cycle-routes": "https://www.yamada-kankou.jp/wp-content/uploads/2026/07/otachiyori-map.pdf#page=2"}
+  },
+  {
+    "id": "rental-cycle-four-hours",
+    "category": "観光",
+    "question": "陸中山田駅の電動アシスト自転車を4時間借りるといくらですか？持参するものはありますか？",
+    "expected_answer": "1台800円、身分証明書の提示が必要。",
+    "required_patterns": ["(?<![0-9])800\\s*円", "(?:身分証明書|身分証|本人確認書類)"],
+    "required_sources": {"md-rental-cycle-yamada": "https://www.yamada-kankou.jp/information/rental-cycle/"}
+  },
+  {
+    "id": "nursery-monthly-work-hours-2027",
+    "category": "子育て",
+    "question": "令和9年度の山田町の保育所入所で、就労を理由に申請する場合の月の最低就労時間は？",
+    "expected_answer": "令和9年度の案内では月64時間以上。",
+    "required_patterns": ["64\\s*時間", "令和\\s*9\\s*年度|2027\\s*年度"],
+    "required_sources": {"md-nursery-work-requirements-2027": "https://www.town.yamada.iwate.jp/fs/1/4/2/0/4/8/_/R9__________.pdf#page=1"}
+  },
+  {
+    "id": "childcare-open-to-all-monthly-hours",
+    "category": "子育て",
+    "question": "山田町のこども誰でも通園制度は、親が働いていなくても利用できますか？月何時間までですか？",
+    "expected_answer": "保護者の就労は要件ではなく、子ども1人あたり月10時間まで。",
+    "required_patterns": ["月.{0,18}10\\s*時間", "就労.{0,30}(?:問[わい]|関係な|関わら|かかわら)|働いていなくても.{0,25}(?:利用できます|利用可能|使えます)"],
+    "required_sources": {"md-childcare-open-to-all": "https://www.town.yamada.iwate.jp/docs/397.html"}
+  },
+  {
+    "id": "partnership-oath-booking",
+    "category": "くらし",
+    "question": "山田町のパートナーシップ宣誓は希望日の何日前までに予約して、書類はいつ提出しますか？",
+    "expected_answer": "予約と書類提出はともに宣誓希望日の10日前まで。",
+    "required_patterns": ["10\\s*日前", "予約", "提出"],
+    "required_sources": {"md-partnership-oath-booking": "https://www.town.yamada.iwate.jp/fs/1/3/8/3/3/4/_/____________________________.pdf#page=5"}
+  },
+  {
+    "id": "pet-evacuation-shelters-2026",
+    "category": "防災",
+    "question": "令和8年度の山田町の指定避難所一覧でペット用エリアがある施設はどこですか？",
+    "expected_answer": "旧荒川小学校体育館、旧轟木小学校体育館、山田町B&G海洋センター体育館。",
+    "required_patterns": ["旧荒川小学校", "旧轟木小学校", "B[＆&]G海洋センター"],
+    "required_sources": {"md-pet-evacuation-shelters-2026": "https://www.town.yamada.iwate.jp/fs/1/3/8/9/9/5/_/0205_________________.pdf#page=1"}
+  },
+  {
+    "id": "sports-park-winter",
+    "category": "公共施設",
+    "question": "町民総合運動公園の野球場とテニス場はそれぞれいつ冬期閉鎖になりますか？",
+    "expected_answer": "野球場は11月から4月中旬まで、テニス場は12月から3月まで。",
+    "required_patterns": ["野球場.{0,40}11\\s*月.{0,12}4\\s*月中旬", "テニス場.{0,40}12\\s*月.{0,12}3\\s*月"],
+    "required_sources": {"md-sports-park-winter": "https://www.town.yamada.iwate.jp/fs/1/2/9/0/5/3/_/____________.pdf#page=1"}
+  },
+  {
+    "id": "migration-grant-filing",
+    "category": "住まい",
+    "question": "令和8年4月以降に山田町に転入した人の移住支援金は、転入後いつまでに申請し、何年以上住む意思が必要ですか？",
+    "expected_answer": "転入後1年以内に申請。申請日から5年以上住む意思が必要。",
+    "required_patterns": ["転入.{0,18}1\\s*年以内", "5\\s*年以上"],
+    "required_sources": {"md-migration-grant-2026": "https://www.town.yamada.iwate.jp/fs/1/3/9/0/2/6/_/R8.4.1.pdf#page=2"}
+  },
+  {
+    "id": "yamada-mame-suttogi",
+    "category": "食・文化",
+    "question": "山田町の郷土食、豆すっとぎは何で作り、もともと何のために作ったものですか？",
+    "expected_answer": "大豆、うるち米の粉、砂糖、塩。秋の収穫に感謝して神に供えた。",
+    "required_patterns": ["大豆", "うるち", "砂糖", "塩", "収穫", "供え"],
+    "required_sources": {"md-mame-suttogi": "https://www.town.yamada.iwate.jp/fs/1/1/6/7/4/7/_/06.pdf#page=2"}
+  },
+  {
+    "id": "town-bulletin-frequency-2026",
+    "category": "広報",
+    "question": "令和8年4月以降、町の広報やまだは毎月何回・何日に発行ですか？",
+    "expected_answer": "2026年4月以降は月1回、毎月1日。",
+    "required_patterns": ["月\\s*1\\s*回", "毎月.{0,8}1\\s*日"],
+    "required_sources": {"md-town-bulletin-frequency-2026": "https://www.town.yamada.iwate.jp/fs/1/3/7/5/9/8/_/0315_1P-4P.pdf#page=2"}
   }
 ]
