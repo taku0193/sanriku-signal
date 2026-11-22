@@ -14,10 +14,14 @@ export interface SourceRecord extends Source {
 
 export const SEARCH_LIMIT = 3;
 
-export function normalize(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, (char) =>
+export function foldKana(text: string): string {
+  return text.replace(/[ァ-ヶ]/g, (char) =>
     String.fromCharCode(char.charCodeAt(0) - 0x60)
   );
+}
+
+export function normalize(text: string): string {
+  return foldKana(text.normalize("NFKC").toLowerCase());
 }
 
 export function hasTopic(record: SourceRecord, query: string): boolean {

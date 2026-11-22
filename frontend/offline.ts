@@ -1,5 +1,6 @@
 import { formatEvidencePrompt, normalize, rankCurated } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
+import { normalizeQuery } from "../shared/query.js";
 import type { GuideResult, Photo } from "./types";
 
 export interface OfflineData {
@@ -15,7 +16,7 @@ export interface OfflineData {
 
 export function searchOffline(question: string, data: OfflineData): GuideResult {
   const { records, limit, instructions, noEvidence, photos = [], photoLimit = 2 } = data;
-  const sources = rankCurated(records, normalize(question)).records.slice(0, limit);
+  const sources = rankCurated(records, normalize(normalizeQuery(question))).records.slice(0, limit);
   const sourceIds = new Set(sources.map((record) => record.id));
 
   return {

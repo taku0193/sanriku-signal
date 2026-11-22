@@ -84,9 +84,11 @@ function formatDay(date: string) {
 }
 
 function normalizeDistrict(text: string): string {
-  return text.normalize("NFKC").replace(/([一二三四五六七八九])丁目/g, (_, digit: string) =>
-    "〇一二三四五六七八九".indexOf(digit) + "丁目"
-  );
+  return normalize(text)
+    .replace(/([一二三四五六七八九])(?:丁目|ちょうめ)/g, (_, digit: string) =>
+      "〇一二三四五六七八九".indexOf(digit) + "丁目")
+    .replace(/([0-9]+)ちょうめ/g, "$1丁目")
+    .replace(/([0-9]+)く(?=$|です|[0-9のはでがとを])/g, "$1区");
 }
 
 function districtIndex(year?: number) {

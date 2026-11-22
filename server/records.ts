@@ -1,6 +1,7 @@
 import { readdirSync } from "node:fs";
 import { normalize, rankCurated, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
+import { normalizeQuery } from "../shared/query.js";
 import { projectRoot, readJsonFile, readTextFile } from "./files.js";
 
 export const NO_EVIDENCE = "登録した資料からは、質問に答えるための根拠を確認できませんでした。";
@@ -92,7 +93,7 @@ export function makeSourceReader(records: SourceRecord[]) {
 export type SourceReader = ReturnType<typeof makeSourceReader>;
 
 export function rankSections(sections: readonly SourceRecord[], query: string, limit: number) {
-  const terms = termsFor(query);
+  const terms = termsFor(normalizeQuery(query));
   return sections.map((section) => {
     const heading = lexicalText(section.heading ?? section.title);
     const body = lexicalText(section.text);

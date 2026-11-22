@@ -1,6 +1,7 @@
 import type { Pending, ProgressStage, QuestionAndAnswer } from "../frontend/types.js";
 import { normalize } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
+import { normalizeQuery } from "../shared/query.js";
 import {
   AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, findCollectionDays, fiscalYear, namedWasteTypes, singleDistrictHint, todayInTokyo,
 } from "./calendars.js";
@@ -26,6 +27,7 @@ const INSTRUCTIONS = readTextFile("prompts/react.md").trimEnd()
   .replace("{TYPE_GUIDE}", Object.entries(COLLECTION_TYPES).map(([key, label]) => `  ${key} は ${label}`).join("\n"));
 const TOOL_INSTRUCTIONS = readTextFile("prompts/react-tools.md").trimEnd();
 const HISTORY_INSTRUCTIONS = "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使います。同じ質問を再度された場合も資料を検索し、今回の observations を回答の根拠とします。";
+const SEARCH_WORDING_INSTRUCTIONS = "search_wording は、質問や返答の読み・誤字から資料検索用に補った表記です。検索語を決める参考にし、質問の対象や条件は元の question と follow_up で確認します。";
 const STREAM_INSTRUCTIONS = "回答を返す場合は、JSONを action、sources、answer の順で書いてください。";
 const CONSTRAINT_INSTRUCTIONS = "候補ごとに年齢・移動手段・除外指定などを資料と照合します。必須条件が未確認なら、候補の実名と不足条件で検索します。徒歩で行けるという案内には、徒歩、距離、隣接のいずれかを示す資料を使います。適合する施設の名前、行きやすい理由、実際にできることを簡潔に説明し、対象外の候補は回答から省きます。営業時間を聞かれていなければ、今日の営業状況、曜日、営業時間は回答に入れません。「遊べる場所」のように活動が広い場合は、児童図書の読書など資料にある活動を具体的に伝え、遊具などは資料で確認した場合だけ案内します。";
 const REVIEW_INSTRUCTIONS = "候補回答を引用資料と照合します。確認できた部分を先に見つけます。資料が駅との隣接を示せば徒歩での案内ができます。『遊べる場所』のように活動の指定が広ければ、資料にある児童図書の読書など具体的な過ごし方を案内できます。遊具は指定があるときだけ確認します。回答全体が裏づけられれば supported=true。無関係な候補や、今日の開館など未確認の断定を除く必要があれば supported=false とし、残せる文章を回答から一字一句変えずに一続きで excerpt に抜き出します。該当する文章もなく、調べられる条件があれば具体的な検索語を query に入れます。";
@@ -78,6 +80,7 @@ interface TurnState {
   history?: QuestionAndAnswer[];
   prior_passages?: Passage[];
   follow_up?: { asked: string; reply: string };
+  search_wording?: { question?: string; reply?: string };
   collection_hints?: CollectionHints;
   remaining_searches?: number;
 }
@@ -157,7 +160,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     const expandable = state.expandable_source_ids;
     const wording = state.question + " " + (state.follow_up?.reply ?? "");
     const checkConstraints = !state.collection_hints &&
-      /以外|を除[くい]|抜きで|が使えない|できない場合/u.test(normalize(wording));
+      /以外|いがい(?:で|の)|を除[くい]|抜きで|が使えない|できない場合/u.test(normalize(wording));
     const stream = checkConstraints ? undefined : onContent;
     const properties = {
       action: { type: "string", enum: actions },
@@ -180,6 +183,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     };
     const instructions = [
       INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(checkConstraints ? [CONSTRAINT_INSTRUCTIONS] : []),
+      ...(state.search_wording ? [SEARCH_WORDING_INSTRUCTIONS] : []),
       ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(stream ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
     const decision = await chatJson({
@@ -232,7 +236,7 @@ function asksCollectionDate(text: string) {
   if (/収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/.test(query)) return true;
   if (asksReservationDeadline(query)) return false;
   return (/ごみ|ぺっとぼとる|蛍光灯/.test(query) || namedWasteTypes(query).length > 0) &&
-    /今日|明日|次回|次の|何日|何曜日|[0-9]+月|いつ(?!までに)/.test(query);
+    /今日|(?<!とう)きょう|明日|あした|次回|次の|つぎの|何日|何曜日|[0-9]+月|いつ(?!までに)/.test(query);
 }
 
 function collectionHints(wording: string[]): CollectionHints {
@@ -281,7 +285,7 @@ function configureSearch(event: SearchEvent, decision: Record<string, unknown>, 
     if (!strategy) return;
     Object.assign(event, { query, strategy });
     return {
-      key: JSON.stringify([event.target, strategy, compactText(normalize(query))]),
+      key: JSON.stringify([event.target, strategy, compactText(normalize(normalizeQuery(query)))]),
       lookup: (): Promise<LookupResult> => retrieve(query, signal, strategy),
     };
   }
@@ -317,7 +321,7 @@ function configureDetailSearch(event: SearchEvent, decision: Record<string, unkn
   const anchor = evidence.get(sourceId)!;
   Object.assign(event, { source_id: sourceId, query });
   return {
-    key: JSON.stringify([event.target, sourceId, compactText(normalize(query))]),
+    key: JSON.stringify([event.target, sourceId, compactText(normalize(normalizeQuery(query)))]),
     lookup: async (): Promise<LookupResult> => {
       const records = exposedLengths.get(sourceId)! < Math.min(anchor.text.length, DETAIL_LIMIT) ? [anchor] : [];
       const unseen = readSource(anchor).filter(({ id }) => !evidence.has(id));
@@ -335,9 +339,17 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   };
   if (history?.length) state.history = history;
   const hint = pending?.district_hint;
-  const reply = hint && /^[0-9]+区/.test(normalize(question)) ? hint + question : question;
+  const reply = hint && /^[0-9]+(?:区|く(?=$|です|[のでにはがとを]))/.test(normalize(question)) ? hint + question : question;
   if (pending) state.follow_up = { asked: pending.prompt, reply };
-  const wording = pending ? [reply, pending.question] : [question];
+  const searchQuestion = normalizeQuery(state.question);
+  const searchReply = pending ? normalizeQuery(reply) : reply;
+  if (searchQuestion !== state.question || searchReply !== reply) {
+    state.search_wording = {
+      question: searchQuestion !== state.question ? searchQuestion : undefined,
+      reply: searchReply !== reply ? searchReply : undefined,
+    };
+  }
+  const wording = pending ? [searchReply, searchQuestion] : [searchQuestion];
   let calendarQuestion = asksCollectionDate(wording.join("\n"));
   const repeatedQuestion = !pending && history?.some((turn) => normalize(turn.question) === normalize(question));
   if (calendarQuestion) state.collection_hints = collectionHints(wording);

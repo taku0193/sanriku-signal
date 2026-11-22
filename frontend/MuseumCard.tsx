@@ -1,4 +1,5 @@
 import type { Source } from "./types";
+import { normalizeQuery } from "../shared/query.js";
 
 const facility = "鯨と海の科学館";
 const officialUrl = "https://yamada-kujirakan.jp/facility/";
@@ -9,18 +10,18 @@ type MuseumFacts =
   | { kind: "route"; station: string; walk: string };
 
 export function museumFacts(question: string, sources: Source[]): MuseumFacts | undefined {
-  const input = question.normalize("NFKC");
+  const input = normalizeQuery(question).normalize("NFKC");
   if (!/科学館|くじら館/.test(input) ||
-      /比較|比べ|どちら|おいすた|道の駅|車[いイ]す|車椅子|バリアフリー|予約|ごみ/.test(input)) return;
+      /比較|比べ|くらべ|どちら|おいすた|道の駅|車[いイ]す|くるまいす|車椅子|バリアフリー|予約|ごみ|以外|いがい/.test(input)) return;
 
   const route = /行き方|どう行|アクセス|最寄り|徒歩|歩い|行け|行けば/.test(input);
   const hours = /開館|閉館|営業時間|最終入館|休館|何時|開いて|開き/.test(input);
   const fee = /料金|入館料|入場料|いくら|値段/.test(input);
   if (Number(route) + Number(hours) + Number(fee) !== 1) return;
-  if (route && (/車で|車なら|駐車|バス|タクシー/.test(input) ||
+  if (route && (/車で|車なら|くるまで|くるまなら|駐車|バス|ばす|タクシー|たくしー/.test(input) ||
       (/から/.test(input) && !/(岩手船越駅|最寄り駅)$/.test(input.split("から")[0].trimEnd())))) return;
-  if (hours && /今日|明日|明後日|今週|来週|年末年始|祝日|大型連休|[月火水木金土日]曜|\d+月|臨時/.test(input)) return;
-  if (fee && /団体|割引|無料|学生|高校|中学|小学|子ども|子供|幼児/.test(input)) return;
+  if (hours && /今日|きょう|明日|あした|明後日|あさって|今週|こんしゅう|来週|らいしゅう|年末年始|祝日|しゅくじつ|大型連休|[月火水木金土日]曜|(?:げつ|か|すい|もく|きん|ど|にち)ようび|\d+月|臨時/.test(input)) return;
+  if (fee && /団体|だんたい|割引|わりびき|無料|むりょう|学生|がくせい|高校|中学|小学|子ども|子供|こども|幼児|ようじ/.test(input)) return;
 
   for (const hit of sources) {
     if (hit.url !== officialUrl || !hit.text) continue;

@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { endianness } from "node:os";
 import { hasTopic, normalize, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
+import { normalizeQuery } from "../shared/query.js";
 import { isObject, projectRoot } from "./files.js";
 import { ollamaRequest, ollamaSignal } from "./ollama.js";
 import { lexicalText, makeKeywordSearch } from "./records.js";
@@ -139,7 +140,7 @@ function hybrid(keyword: SourceRecord[], semantic: SourceRecord[], rawQuery: str
 
 export function makeRetriever(records: SourceRecord[], mode: SearchMode, path = new URL("embeddings-cache.json", projectRoot)): Retriever {
   const keyword = makeKeywordSearch(records);
-  if (mode === "keyword") return async (query) => ({ records: keyword(query), mode });
+  if (mode === "keyword") return async (query) => ({ records: keyword(normalizeQuery(query)), mode });
 
   const documents = documentHashes(records);
   const model = process.env.YAMADA_EMBED_MODEL || DEFAULT_MODEL;
@@ -156,7 +157,8 @@ export function makeRetriever(records: SourceRecord[], mode: SearchMode, path = 
     return current.index;
   }
 
-  return async (query, signal, strategy = mode) => {
+  return async (rawQuery, signal, strategy = mode) => {
+    const query = normalizeQuery(rawQuery);
     if (strategy === "keyword") return { records: keyword(query), mode: "keyword" };
     try {
       const index = await getIndex();

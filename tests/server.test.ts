@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import type { GuideResult, StreamEvent } from "../frontend/types.js";
+import { normalizeQuery } from "../shared/query.js";
 import { AmbiguousDistrict, collectionBounds, findCollectionDays, namedWasteTypes, singleDistrictHint, todayInTokyo } from "../server/calendars.js";
 import { makeRetriever } from "../server/embeddings.js";
 import type { SearchStrategy } from "../server/embeddings.js";
@@ -16,6 +17,30 @@ const records = loadRecords();
 const keyword = makeRetriever(records, "keyword");
 const searchMuseum = { action: "search", target: "official_documents", query: "鯨と海の科学館 入館料", missing_fact: "科学館の入館料" };
 
+test("読みと1文字の誤字から、同じ公式資料を検索する", async () => {
+  const cases = [
+    ["くじらとうみのかがくかんのおとなのにゅうかんりょう", "museum-fees"],
+    ["ｶｶﾞｸｶﾝのにゅうかんりょう", "museum-fees"],
+    ["かがっかんの入館料", "museum-fees"],
+    ["かくがかんの入館料", "museum-fees"],
+    ["かがくかかんの入館料", "museum-fees"],
+    ["かがかんの入館料", "museum-fees"],
+    ["鯨と海の化学館の入館量", "museum-fees"],
+    ["とよまんねえきのじこくひょう", "santetsu-timetable"],
+    ["おらんだじまのかいすいよく", "md-oranda-island-beach-2026"],
+    ["じゅうみんひょうをこんびにこうふでとるには？", "md-resident-certificate-convenience"],
+    ["かんでんちのだしかた", "md-waste-batteries-and-lamps"],
+  ];
+  for (const [question, id] of cases) {
+    assert.equal((await keyword(question)).records[0]?.id, id, question);
+  }
+  assert.equal(normalizeQuery("科学館のにゅうかんりょはいくら？"), "科学館の入館料はいくら?");
+  assert.equal(normalizeQuery("🐋 İ かがくかんいがいで"), "🐋 İ 科学館いがいで");
+  assert.equal(normalizeQuery("かがくかんれんのほん"), "かがくかんれんのほん");
+  assert.equal(normalizeQuery("わにわに水晶博物館のにゅうかんりょう"), "わにわに水晶博物館の入館料");
+  assert.equal(normalizeQuery("おおさ3くのもやさないごみ"), "おおさ3くのもやさないごみ");
+});
+
 test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", async () => {
   const first = await runTurn("料金はいくらですか？", async () => ({
     action: "clarify", field: "condition", answer: "どの施設の料金ですか？",
@@ -24,9 +49,10 @@ test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", as
   assert.deepEqual(first.sources, []);
   assert.equal(first.pending?.field, "condition");
   assert.throws(() => readPending({ ...first.pending, district_hint: "大沢" }), TypeError);
-  const next = await runTurn("鯨と海の科学館です", async (state, actions) => {
+  const next = await runTurn("かがっかんです", async (state, actions) => {
     assert.equal(state.question, "料金はいくらですか？");
-    assert.equal(state.follow_up?.reply, "鯨と海の科学館です");
+    assert.equal(state.follow_up?.reply, "かがっかんです");
+    assert.deepEqual(state.search_wording, { question: undefined, reply: "科学館です" });
     assert.ok(!actions.includes("clarify"));
     return state.observations.length
       ? { action: "answer", answer: "大人300円です。", sources: ["museum-fees"] }
@@ -173,6 +199,22 @@ test("収集日の地区と品目は利用者の言い方から照合する", as
   assert.doesNotMatch(result.answer, /・燃やせるごみ　/);
 });
 
+test("ひらがなの地区名と区番号を照合し、地区の曖昧さを保つ", async () => {
+  const question = "おおさわ３くのもやせないごみは2026年12月のいつ？";
+  const result = await runTurn(question, async (state) => {
+    assert.equal(state.question, question);
+    assert.deepEqual(state.collection_hints, {
+      district: "大沢3区", waste_types: ["non_burnable_glass_batteries"],
+    });
+    return state.observations.length ? { action: "answer", sources: ["calendar-2026-osawa"] }
+      : { action: "search", target: "collection_calendars" };
+  }, keyword, { today: "2026-11-22" });
+  assert.match(result.answer, /大沢.*2026年12月/s);
+  assert.match(result.answer, /燃やせないごみ.*2026年12月18日/);
+  assert.doesNotMatch(result.answer, /・燃やせるごみ　/);
+  assert.equal(singleDistrictHint([normalizeQuery("ふなこしのごみのしゅうしゅうび")]), undefined);
+});
+
 test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) => {
   const server = createGuideServer({
     records, retrieval: "keyword", decide: async (state, _actions, _signal, onContent) => {
@@ -228,7 +270,7 @@ test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) 
 
 test("埋め込み索引なしでも資料を検索でき、モデル切断時は保留中の質問を返す", async (context) => {
   const hybrid = makeRetriever(records, "hybrid", new URL("file:///dev/null/embeddings-cache.json"));
-  const fallback = await hybrid("鯨と海の科学館の入館料は？");
+  const fallback = await hybrid("かがっかんのにゅうかんりょうは？");
   assert.equal(fallback.mode, "keyword_fallback");
   assert.equal(fallback.records[0].id, "museum-fees");
 
