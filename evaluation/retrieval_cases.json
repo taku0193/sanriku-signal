@@ -208,5 +208,115 @@
     "kind": "exact",
     "question": "2026年4月から広報やまだは毎月何回発行されますか？",
     "expected_sources": [["md-town-bulletin-frequency-2026"]]
+  },
+  {
+    "id": "child-medical-age",
+    "question": "山田町の子どもの医療費助成は高校3年生も対象ですか？所得制限はありますか？",
+    "expected_sources": [["md-child-medical-aid"]]
+  },
+  {
+    "id": "vaccination-outside-town",
+    "question": "子どもの定期予防接種を山田町の協力医療機関以外で受けるとき、町の助成には事前に何を申請しますか？",
+    "expected_sources": [["md-child-vaccination-outside"]]
+  },
+  {
+    "id": "pregnancy-payment-twins",
+    "question": "山田町の妊婦のための支援給付で、双子の場合は1回目と2回目がそれぞれいくらですか？",
+    "expected_sources": [["md-pregnancy-support-payment"]]
+  },
+  {
+    "id": "maternity-handbook-first",
+    "question": "山田町で母子手帳を受け取るのに電話予約はいりますか？どこで受け取れますか？",
+    "expected_sources": [["md-maternal-child-handbook"]]
+  },
+  {
+    "id": "child-allowance-branch",
+    "question": "山田町に転入したときの児童手当は何日以内に申請するの？豊間根支所でも出せますか？",
+    "expected_sources": [["md-child-allowance-filing"]]
+  },
+  {
+    "id": "after-school-summer-fees",
+    "question": "山田町の学童は夏休みの朝何時から預かってくれますか？普段の月額と一時預かりの日額も教えて。",
+    "expected_sources": [["md-after-school-care"]]
+  },
+  {
+    "id": "wheelchair-taxi-aid",
+    "question": "山田町から宮古市への定期通院で、福祉タクシーの車いす対応車両はいくらまで助成され、月に何回使えますか？",
+    "expected_sources": [["md-welfare-taxi-visit"]]
+  },
+  {
+    "id": "care-certification-senior",
+    "question": "山田町で70歳の親の要介護認定を申請するなら、窓口と持ち物を教えてください。",
+    "expected_sources": [["md-care-certification"]]
+  },
+  {
+    "id": "senior-emergency-device",
+    "question": "山田町で一人暮らしの高齢者が緊急通報装置を借りたい。協力員は何人必要？町民税非課税なら利用料は？",
+    "expected_sources": [["md-senior-emergency-device"]]
+  },
+  {
+    "id": "postal-family-register",
+    "question": "町外から山田町へ現在の戸籍謄本を郵送で請求するには、1通分の手数料と同封物は？",
+    "expected_sources": [["md-certificates-by-post"]]
+  },
+  {
+    "id": "seal-registration-same-day",
+    "question": "山田町の印鑑登録をするとき、運転免許証を持っていけば当日登録できますか？登録手数料は？",
+    "expected_sources": [["md-seal-registration"]]
+  },
+  {
+    "id": "passport-pickup-person",
+    "question": "山田町でパスポートをオンライン申請したら、家族が代理で受け取れますか？どこで受け取りますか？",
+    "expected_sources": [["md-passport-collection"]]
+  },
+  {
+    "id": "home-bank-viewing",
+    "question": "町外から山田町空き家バンクで物件を探したいです。身分証は必要ですか？内見の日程調整の目安は？",
+    "expected_sources": [["md-vacant-home-bank"]]
+  },
+  {
+    "id": "leak-water-reduction",
+    "question": "山田町で漏水を直したあと、水道料金の減免を申請するにはどんな証明や添付が必要ですか？",
+    "expected_sources": [["md-water-leak-fee-reduction"]]
+  },
+  {
+    "id": "yamada-alert-app",
+    "question": "スマホで山田町の防災情報を受け取るには、どのアプリで何を登録すればいいですか？",
+    "expected_sources": [["md-info-yamada-alerts"]]
+  },
+  {
+    "id": "hazard-map-osawa",
+    "question": "大沢の津波ハザードマップと洪水ハザードマップを探しています。それぞれ冊子の何ページですか？",
+    "expected_sources": [["md-town-hazard-map-regions"]]
+  },
+  {
+    "id": "iwate-child-emergency-current",
+    "question": "岩手県山田町で子どもの救急の電話相談は2026年11月の昼でも使えますか？IP電話の番号も教えてください。",
+    "expected_sources": [["md-iwate-child-emergency-number"]]
+  },
+  {
+    "id": "iwate-emergency-ip",
+    "question": "山田町で、成人の救急車を呼ぶか迷ったときの岩手県の相談番号は？IP電話のときと受付時間も教えて。",
+    "expected_sources": [["md-iwate-emergency-number"]]
+  },
+  {
+    "id": "oyster-hut-one-person",
+    "question": "山田かき小屋の2026年秋からの蒸し焼きカキは一人で予約できますか？何日前までに予約するんですか？",
+    "expected_sources": [["md-oyster-hut-season-2026-27"]]
+  },
+  {
+    "id": "beach-aragami-bus",
+    "question": "2026年の荒神海水浴場は更衣室がありましたか？最寄りのバス停と歩く時間も知りたい。",
+    "expected_sources": [["md-yamada-beaches-2026"]]
+  },
+  {
+    "id": "kayak-school-age",
+    "question": "2026年のFBインプレシオンのオランダ島シーカヤックスクールに12歳は申し込めましたか？締切も教えて。",
+    "expected_sources": [["md-orandajima-kayak-school-2026"]]
+  },
+  {
+    "id": "tsunami-archive-reading",
+    "question": "山田町津波誌はネットで読めますか？どの年代の津波が載っていますか？",
+    "expected_sources": [["md-tsunami-history-archive"]]
   }
 ]

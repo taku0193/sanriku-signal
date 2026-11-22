@@ -136,20 +136,22 @@ def search(records, query):
         matches.append((topic_score, max(map(len, keywords)), record))
     matches.sort(key=lambda match: match[:2], reverse=True)
 
-    # 比較の質問で、候補が1つの公式ページに偏らないようにする。
-    first_per_source = {}
+    # 質問された項目に合う節を保ち、項目が合わない同じURLの候補は後ろに回す。
+    urls = set()
+    prioritized = []
     remaining = []
-    for _, _, record in matches:
-        if record["url"] in first_per_source:
+    for topic_score, _, record in matches:
+        if not topic_score and record["url"] in urls:
             remaining.append(record)
         else:
-            first_per_source[record["url"]] = record
+            prioritized.append(record)
+        urls.add(record["url"])
+    curated = prioritized + remaining
     if not matches or not matches[0][0]:
         imported = search_imported([record for record in records if "published" in record], query)
         imported_urls = {record["url"] for record in imported}
-        curated = list(first_per_source.values()) + remaining
         return (imported + [record for record in curated if record["url"] not in imported_urls])[:SEARCH_LIMIT]
-    return (list(first_per_source.values()) + remaining)[:SEARCH_LIMIT]
+    return curated[:SEARCH_LIMIT]
 
 
 def format_record(record):

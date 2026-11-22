@@ -147,6 +147,18 @@ function formatPromptJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const sentences = new Intl.Segmenter("ja", { granularity: "sentence" });
+
+function omitUnaskedDailySchedule(answer: string, wording: string) {
+  const timing = /営業|開館|休館|閉館|開[いくきけ]|休み|定休日|何時|いつ|何曜日|日中|今から|今朝|今夜|今日|本日|明日|当日|きょう|あした|現在|平日|休日|週末|祝日|[月火水木金土日]曜|\d+[月日時]/;
+  if (timing.test(normalize(wording))) return answer;
+  return [...sentences.segment(answer)].filter(({ segment }) => {
+    const dated = /(?:本日|今日|明日)(?:は|の|も|[（(、])/.test(segment);
+    const operating = /営業|開館|休館|閉館|開店|閉店|休業/.test(segment);
+    return !dated || !operating;
+  }).map(({ segment }) => segment).join("").trim();
+}
+
 export function makeDecider(model: string, timeoutMs?: number): Decider {
   return async (state, actions, signal, onContent) => {
     const sourceIds = new Set([
@@ -200,6 +212,9 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     }
     if (checkConstraints && decision.action === "answer" && actions.includes("answer") &&
         Array.isArray(decision.sources) && typeof decision.answer === "string") {
+      const context = [wording, ...(state.history ?? []).map(({ question }) => question)].join("\n");
+      const answer = omitUnaskedDailySchedule(decision.answer, context);
+      if (!answer) return { action: "insufficient" };
       const cited = new Set(decision.sources);
       const passages = new Map([
         ...(state.prior_passages ?? []),
@@ -210,18 +225,19 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
         messages: [
           { role: "system", content: REVIEW_INSTRUCTIONS },
           { role: "user", content: formatPromptJson({
-            question: state.question, follow_up: state.follow_up, answer: decision.answer, passages: [...passages.values()],
+            question: state.question, follow_up: state.follow_up, answer, passages: [...passages.values()],
           }) },
         ],
       });
       if (review.supported !== true) {
         const excerpt = trimString(review.excerpt);
-        if (excerpt && decision.answer.includes(excerpt)) return { ...decision, answer: excerpt };
+        if (excerpt && answer.includes(excerpt)) return { ...decision, answer: excerpt };
         const query = trimString(review.query);
         return actions.includes("search") && query && [...query].length <= 400
           ? { action: "search", target: "official_documents", query, missing_fact: "候補と利用条件の照合" }
           : { action: "insufficient" };
       }
+      return { ...decision, answer };
     }
     return decision;
   };

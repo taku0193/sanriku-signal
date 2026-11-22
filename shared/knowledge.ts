@@ -40,13 +40,15 @@ export function rankCurated(records: readonly SourceRecord[], query: string) {
   }
   matches.sort((a, b) => b.topicScore - a.topicScore || b.keywordLength - a.keywordLength);
 
-  const firstByUrl = new Map<string, SourceRecord>();
+  const urls = new Set<string>();
+  const prioritized: SourceRecord[] = [];
   const remaining: SourceRecord[] = [];
-  for (const { record } of matches) {
-    if (firstByUrl.has(record.url)) remaining.push(record);
-    else firstByUrl.set(record.url, record);
+  for (const { record, topicScore } of matches) {
+    if (!topicScore && urls.has(record.url)) remaining.push(record);
+    else prioritized.push(record);
+    urls.add(record.url);
   }
-  return { records: [...firstByUrl.values(), ...remaining], strongMatch: Boolean(matches[0]?.topicScore) };
+  return { records: [...prioritized, ...remaining], strongMatch: Boolean(matches[0]?.topicScore) };
 }
 
 export function formatEvidencePrompt(question: string, records: SourceRecord[], instructions: string): string {

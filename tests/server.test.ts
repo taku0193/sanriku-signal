@@ -30,6 +30,7 @@ test("読みと1文字の誤字から、同じ公式資料を検索する", asyn
     ["おらんだじまのかいすいよく", "md-oranda-island-beach-2026"],
     ["じゅうみんひょうをこんびにこうふでとるには？", "md-resident-certificate-convenience"],
     ["かんでんちのだしかた", "md-waste-batteries-and-lamps"],
+    ["岩手県 救急車 相談番号 IP電話 受付時間", "md-iwate-emergency-number"],
   ];
   for (const [question, id] of cases) {
     assert.equal((await keyword(question)).records[0]?.id, id, question);
@@ -348,6 +349,7 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
   });
   let missingQueries = 0;
   let stalledAfterHeaders = false;
+  const reviewedAnswers: string[] = [];
   const ollama = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -373,6 +375,16 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
       send({ action: "search", target: "official_documents" });
     } else if (request.url === "/unknown-crowd" && !state.observations.length) {
       send({ action: "search", target: "official_documents", query: "道の駅やまだ 営業時間" });
+    } else if (request.url === "/unasked-hours") {
+      if (state.passages) {
+        reviewedAnswers.push(state.answer);
+        send({ supported: true });
+      } else if (!state.observations.length) {
+        send({ action: "search", target: "official_documents", query: "はぴね 児童図書 開館時間" });
+      } else {
+        send({ action: "answer", sources: ["md-hapine-family", "md-hapine-hours"],
+          answer: "はぴねの児童図書コーナーを利用できます。なお、本日（日曜）は17:00まで開館します。" });
+      }
     } else send({ action: "insufficient", answer: "根拠のない回答", sources: ["oisuta-hours"] });
   }).listen(0, "127.0.0.1");
 
@@ -428,4 +440,10 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
   assert.equal(insufficient.answer, NO_EVIDENCE);
   assert.deepEqual(insufficient.sources, []);
   assert.equal(insufficient.notice, "");
+
+  const visit = await ask(stubUrl + "/unasked-hours", "科学館以外で小学生が本を読める施設は？");
+  assert.equal(visit.answer, "はぴねの児童図書コーナーを利用できます。");
+  const hours = await ask(stubUrl + "/unasked-hours", "科学館以外で小学生が本を読める施設は？今日の開館時間も教えて。");
+  assert.match(hours.answer, /17:00まで開館/);
+  assert.deepEqual(reviewedAnswers, [visit.answer, hours.answer]);
 });
