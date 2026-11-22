@@ -8,8 +8,9 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.robotparser import RobotFileParser
 
-from import_town_knowledge import main, ORIGIN
+from import_town_knowledge import ArticleBody, main, ORIGIN, passages, sitemap_urls, TOURISM_ARTICLE_SECTIONS, TOURISM_ORIGIN
 
 
 def import_fixture(output, body_a, body_b, *, index_error=None):
@@ -105,3 +106,57 @@ class TownImportTests(unittest.TestCase):
         self.assertEqual(cached["text"], "海岸観察 初回")
         self.assertNotEqual(cached["id"], fresh["id"])
         self.assertEqual(fresh["id"], "town-fixture-b-1")
+
+    def test_alternate_town_template_uses_page_title_and_own_date(self):
+        body = ArticleBody()
+        body.feed("""<title>国保の手続き - 岩手県山田町ホームページ</title>
+            <aside><time datetime="2026-11-19">お知らせの日付</time></aside>
+            <header class="released"><time datetime="2026-10-27">記事の日付</time></header>
+            <article class="body"><h2>資格確認書</h2><p>町民課で受付</p>
+                <a href="/fs/1/form.PDF">申請書</a>
+            </article>""")
+        self.assertTrue(body.page_title.startswith("国保の手続き"))
+        self.assertEqual(body.date, "2026-10-27")
+        self.assertEqual(list(passages(body.sections)), [("資格確認書", "町民課で受付\n申請書")])
+        self.assertEqual(body.attachment_links, ["/fs/1/form.PDF"])
+
+
+class TourismImportTests(unittest.TestCase):
+    def test_sitemap_discovers_posts_and_dining_areas(self):
+        origin = TOURISM_ORIGIN
+        pages = {
+            origin + "/wp-sitemap.xml": f"""<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <sitemap><loc>{origin}/wp-sitemap-posts-plan-1.xml</loc></sitemap>
+                <sitemap><loc>{origin}/wp-sitemap-taxonomies-area-1.xml</loc></sitemap>
+                <sitemap><loc>{origin}/wp-sitemap-users-1.xml</loc></sitemap>
+            </sitemapindex>""",
+            origin + "/wp-sitemap-posts-plan-1.xml": f"""<urlset>
+                <url><loc>{origin}/plan/plan-123/</loc></url>
+                <url><loc>https://example.com/plan/plan-456/</loc></url>
+            </urlset>""",
+            origin + "/wp-sitemap-taxonomies-area-1.xml": f"""<urlset>
+                <url><loc>{origin}/area/toyomane/</loc></url>
+                <url><loc>{origin}/contact/</loc></url>
+            </urlset>""",
+        }
+        robots = RobotFileParser()
+        robots.parse(["User-agent: *", "Allow: /"])
+        self.assertEqual(list(sitemap_urls(pages.__getitem__, robots)), [
+            origin + "/plan/plan-123/", origin + "/area/toyomane/",
+        ])
+
+    def test_dining_keeps_shop_headings_and_plan_excludes_form_text(self):
+        area = ArticleBody(TOURISM_ARTICLE_SECTIONS["area"])
+        area.feed("""<div id="gourmet-list">
+            <div><h2>食堂A</h2><dl><dt>営業</dt><dd>11:00〜14:00</dd></dl></div>
+            <div><h2>食堂B</h2><dl><dt>休</dt><dd>火曜日</dd></dl></div>
+            </div><p>フッター</p>""")
+        self.assertEqual(list(passages(area.sections)), [
+            ("食堂A", "営業\n11:00〜14:00"), ("食堂B", "休\n火曜日"),
+        ])
+        plan = ArticleBody(TOURISM_ARTICLE_SECTIONS["plan"])
+        plan.feed("""<div id="plan-detail-block">
+            <h2>申込み</h2><p>希望日の7日前まで</p>
+            <form><div>入力欄</div></form><p>電話で相談</p>
+            </div><p>ほかの企画</p>""")
+        self.assertEqual(list(passages(plan.sections)), [("申込み", "希望日の7日前まで\n電話で相談")])
