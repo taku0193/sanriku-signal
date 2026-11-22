@@ -37,13 +37,15 @@ def load_markdown(path):
             metadata[key] = value.strip()
         fields = {"title", "category", "source", "url", "checked", "keywords", "topics"}
         text = "\n".join(lines[end + 1:]).strip()
-        if metadata.keys() != fields or not text:
+        if metadata.keys() - {"names"} != fields or not text:
             raise ValueError
         url = urlsplit(metadata["url"])
         if url.scheme != "https" or not url.hostname:
             raise ValueError
         date.fromisoformat(metadata["checked"])
-        for key in ("keywords", "topics"):
+        for key in ("keywords", "topics", "names"):
+            if key not in metadata:
+                continue
             values = [word.strip() for word in metadata[key].split(",")]
             if not all(values):
                 raise ValueError
@@ -61,6 +63,9 @@ def load_records(*, include_imported=True):
         metadata = {key: document[key] for key in ("category", "source", "url", "checked")}
         records.extend({**metadata, **record} for record in document["records"])
     records.extend(load_markdown(file) for file in sorted(path.with_name("knowledge").glob("*.md")))
+    for document in json.loads(path.with_name("regional_resources.json").read_text(encoding="utf-8")):
+        metadata = {key: document[key] for key in ("category", "source", "url", "checked")}
+        records.extend({**metadata, **record} for record in document["records"])
     for filename in ("town_articles.json", "tourism_articles.json") if include_imported else ():
         imported_path = path.with_name(filename)
         if not imported_path.is_file():
@@ -84,6 +89,23 @@ def normalize(text):
 @lru_cache(maxsize=16384)
 def lexical_text(text):
     return " ".join(re.findall(r"[^\W_]+", normalize(text)))
+
+
+def name_text(text):
+    return "".join(char for char in normalize(text) if not char.isspace() and unicodedata.category(char)[0] != "P")
+
+
+def name_queries(text):
+    compact = name_text(text)
+    subject = re.sub(r"(?:(?:って|とは|について)(?:何|なに|教えて|おしえて)?(?:ですか|ください)?|は(?:何|なに)(?:ですか)?)$", "", compact)
+    return [compact, subject, *(name_text(name) for name in re.findall(r"[「『]([^」』]+)[」』]", text))]
+
+
+def matched_name_length(record, queries):
+    names = (name_text(alias) for alias in record.get("names", []))
+    return max((len(name) for name in names if name and any(
+        query == name or (len(name) >= 4 and name in query) for query in queries
+    )), default=0)
 
 
 def search_imported(records, query):
@@ -126,21 +148,23 @@ def search_imported(records, query):
 
 def search(records, query):
     query = normalize(query)
+    names = name_queries(query)
     matches = []
     for record in records:
         keywords = [term for term in record.get("keywords", []) if normalize(term) in query]
-        if not keywords:
+        name_length = matched_name_length(record, names)
+        if not keywords and not name_length:
             continue
         # 施設名や品目で絞り込み、質問された項目が合う候補を上位にする。
-        topic_score = sum(len(topic) for topic in record["topics"] if normalize(topic) in query)
-        matches.append((topic_score, max(map(len, keywords)), record))
-    matches.sort(key=lambda match: match[:2], reverse=True)
+        topic_score = sum(len(topic) for topic in record.get("topics", []) if normalize(topic) in query)
+        matches.append((topic_score, name_length, max(map(len, keywords), default=0), record))
+    matches.sort(key=lambda match: match[:3], reverse=True)
 
     # 質問された項目に合う節を保ち、項目が合わない同じURLの候補は後ろに回す。
     urls = set()
     prioritized = []
     remaining = []
-    for topic_score, _, record in matches:
+    for topic_score, _, _, record in matches:
         if not topic_score and record["url"] in urls:
             remaining.append(record)
         else:
@@ -148,9 +172,12 @@ def search(records, query):
         urls.add(record["url"])
     curated = prioritized + remaining
     if not matches or not matches[0][0]:
-        imported = search_imported([record for record in records if "published" in record], query)
-        imported_urls = {record["url"] for record in imported}
-        return (imported + [record for record in curated if record["url"] not in imported_urls])[:SEARCH_LIMIT]
+        named = [record for record in curated if matched_name_length(record, names)]
+        urls = {record["url"] for record in named}
+        imported = [record for record in search_imported([r for r in records if "published" in r], query)
+                    if record["url"] not in urls]
+        urls.update(record["url"] for record in imported)
+        return (named + imported + [record for record in curated if record["url"] not in urls])[:SEARCH_LIMIT]
     return curated[:SEARCH_LIMIT]
 
 

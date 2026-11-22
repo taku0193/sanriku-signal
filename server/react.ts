@@ -95,6 +95,7 @@ interface TurnOptions {
   signal?: AbortSignal;
   searchMode?: SearchMode;
   readSource?: SourceReader;
+  resolveName?: (question: string) => string | undefined;
   checkpoint?: readonly SourceRecord[];
   today?: string;
   onProgress?: (stage: ProgressStage, detail?: string) => void;
@@ -251,6 +252,7 @@ function asksCollectionDate(text: string) {
   const query = normalize(text);
   if (/収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/.test(query)) return true;
   if (asksReservationDeadline(query)) return false;
+  if (/創刊|発行|刊行|出版/.test(query) && !/ごみ|収集|回収|出[すせ]|捨て|処分/.test(query)) return false;
   return (/ごみ|ぺっとぼとる|蛍光灯/.test(query) || namedWasteTypes(query).length > 0) &&
     /今日|(?<!とう)きょう|明日|あした|次回|次の|つぎの|何日|何曜日|[0-9]+月|いつ(?!までに)/.test(query);
 }
@@ -347,7 +349,7 @@ function configureDetailSearch(event: SearchEvent, decision: Record<string, unkn
 }
 
 export async function runTurn(question: string, decide: Decider, retrieve: Retriever, {
-  pending, history, signal, searchMode = "hybrid", readSource, checkpoint, today = todayInTokyo(), onProgress, onDelta, onAction,
+  pending, history, signal, searchMode = "hybrid", readSource, resolveName, checkpoint, today = todayInTokyo(), onProgress, onDelta, onAction,
 }: TurnOptions = {}): Promise<TurnResult> {
   const state: TurnState = {
     question: pending?.question ?? question, today, current_fiscal_year: fiscalYear(today), observations: [],
@@ -358,6 +360,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   const reply = hint && /^[0-9]+(?:区|く(?=$|です|[のでにはがとを]))/.test(normalize(question)) ? hint + question : question;
   if (pending) state.follow_up = { asked: pending.prompt, reply };
   const searchQuestion = normalizeQuery(state.question);
+  const namedSubject = !pending ? resolveName?.(state.question) ?? resolveName?.(searchQuestion) : undefined;
   const searchReply = pending ? normalizeQuery(reply) : reply;
   if (searchQuestion !== state.question || searchReply !== reply) {
     state.search_wording = {
@@ -400,9 +403,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     signal?.throwIfAborted();
     const canClarifyDistrict = calendarQuestion && !state.collection_hints?.district;
     const canClarifyCondition = !calendarQuestion && !pending;
-    const repeatNeedsSearch = step === 0 && repeatedQuestion && !calendarQuestion;
-    const actions: Action[] = repeatNeedsSearch ? [] : ["insufficient"];
-    if (!repeatNeedsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
+    const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject);
+    const actions: Action[] = needsSearch ? [] : ["insufficient"];
+    if (!needsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
     if (evidence.size) actions.push("answer");
     const remaining = Math.min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1);
     if (remaining) actions.push("search");
@@ -425,6 +428,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     if (!action) break;
 
     if (action === "search") {
+      const searchDecision = namedSubject && !state.observations.length && decision.target === "official_documents"
+        ? { ...decision, query: namedSubject } : decision;
       const event: SearchEvent = { action, target: decision.target, status: "invalid", source_ids: [] };
       const missing = trimString(decision.missing_fact);
       if (missing) event.missing_fact = [...compactText(missing)].slice(0, 60).join("");
@@ -433,8 +438,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         state.collection_hints ??= collectionHints(wording);
       }
       const search = event.target === "source_details"
-        ? configureDetailSearch(event, decision, state, readSource, evidence, exposedLengths)
-        : configureSearch(event, decision, today, wording, state.collection_hints, retrieve, state.search_strategies, signal);
+        ? configureDetailSearch(event, searchDecision, state, readSource, evidence, exposedLengths)
+        : configureSearch(event, searchDecision, today, wording, state.collection_hints, retrieve, state.search_strategies, signal);
       let found: LookupResult | undefined;
       if (search) {
         found = previous.get(search.key);

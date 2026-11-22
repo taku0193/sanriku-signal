@@ -165,6 +165,8 @@ PDFから基本資料を作るときは、発行元の一覧で版や対象年�
 
 人が書いて見直すFAQは `knowledge/` にMarkdownで保存できます。[町の花・木・鳥のFAQ](knowledge/town-symbols.md) の形式で、冒頭の `---` で囲まれた箇所に題名、分野、出典、URL、確認日、検索語と項目を置き、その後に本文を書きます。検索語と項目は半角カンマで区切ります。MarkdownとJSONは同じ資料検索で利用でき、単体HTMLには手作業で整えた資料が入ります。
 
+文化財・地域資源の名称、読み、分類は `regional_resources.json` に保管します。公開一覧を更新するには `python3 -B import_regional_resources.py` を実行します。冊子や発行元で確認した詳しい内容は `knowledge/` に記載し、必要なら `names` に正式名・別名・読みを半角カンマ区切りで登録します。たとえば「海よ光れ」では全校劇と学校新聞の違いを説明し、書籍や番組を尋ねられたときはそれぞれの資料を参照します。 [文化財・地域資源の公開一覧](https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_list)
+
 `collection_calendars.json` に公式PDFと地区の対応、`collection_calendar_days.json` に令和8年度の区分別・品目別の日付を保存します。回答には日付と出典の文書名が表示されます。地区名が複数の収集区分にまたがる場合は、区番号やごみステーションの目印を尋ねます。相対的な日付は日本時間を基準にし、「次回」は翌日以降の予定を案内します。
 
 日付データを照合し直すには、公式PDFを資料IDと同じ名前で保存し、`pdftotext` が使える環境で `python3 -B import_calendar_days.py --pdf-dir <PDFのフォルダ>` を実行します。各月の欄と燃やせるごみの曜日が公式表と一致した場合に、日付JSONを更新します。

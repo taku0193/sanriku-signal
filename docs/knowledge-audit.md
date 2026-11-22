@@ -67,3 +67,11 @@ GPUのGemma 4 12Bで、従来38問と追加12問の回答・出典・行動を�
 | 観光・施設 | 2026年の2つの海水浴場とカヤックスクール、かき小屋の2026〜2027年シーズン、荒神社、はぴねの開館条件 | [2026年の海水浴場](https://www.yamada-kankou.jp/information/5937/) · [かき小屋](https://www.yamada-kankou.jp/kakigoya/) · [はぴねの施設紹介](https://www.town.yamada.iwate.jp/docs/247.html) |
 
 期間や年度がある案内は本文と見出しに明記した。岩手県の小児救急電話相談は、2026年10月1日の24時間受付への変更を県の現行ページで照合した。基本資料は59件から85件、検索対象は10,269件から10,295件になった。埋め込みは10,268件を再利用し、新規26件と本文を変更した1件を計算した。点検では欠落した出典形式、資料ID、索引に関する指摘は0件だった。 [県の現行案内](https://www.pref.iwate.jp/kurashikankyou/iryou/seido/1080160/1002955.html)
+
+## 作品・郷土芸能・地名の調査
+
+大沢小学校の「海よ光れ」について、県の復興教育副読本と町の東日本大震災記録誌から、全校劇の開始年、学校新聞の創刊、震災後の第78号を照合した。資料は該当するPDFのページを出典にする。書籍の著者・出版情報、コンクールの課題図書、IBCのテレビとラジオの番組もそれぞれの提供元で確認した。 [岩手県の復興教育副読本](https://iwate-archive.pref.iwate.jp/education/fukkou/pdf/fukudokuhon/kaitei.chuugaku.pdf#page=10) · [山田町の震災記録誌](https://www.town.yamada.iwate.jp/fs/2/3/0/4/_/kirokusi_2.pdf#page=6) · [国土社](https://www.kokudosha.co.jp/search/info.php?isbn=9784337310131) · [放送ライブラリーのラジオ番組](https://www.bpcj.or.jp/program/detail/R22897/)
+
+文化財・地域資源の公開一覧5ページに表示された97件から、名称、読み、分類、詳細ページを収録した。欄間、津波碑、郷土芸能、民具など、詳しい内容を照合したものは別のMarkdown資料に記録した。新規の基本資料は21件。公開一覧の詳細リンクと「海よ光れ」の出典の103 URLはHTTP 200で応答した。 [公開一覧](https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_list) · [六角塔](https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=8) · [八幡大神楽](https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=188)
+
+検索用の本文は10,295件から10,413件になり、埋め込み索引と全件一致した。文化財の一覧から収録した資料は名称、読み、分類を示す。各資源の来歴や現在の開催予定を答えるには、その内容が確認できる資料が必要になる。

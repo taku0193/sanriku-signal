@@ -18,7 +18,7 @@ from urllib.error import HTTPError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
 
-from yamada_rag import SEARCH_LIMIT, lexical_text, load_records, normalize, search
+from yamada_rag import SEARCH_LIMIT, lexical_text, load_records, matched_name_length, name_queries, normalize, search
 
 
 DEFAULT_MODEL = "embeddinggemma-2:270m"
@@ -319,6 +319,8 @@ def _semantic(index, query_vector, limit):
 
 
 def _strong_match(record, query):
+    if matched_name_length(record, name_queries(query)):
+        return True
     if any(normalize(word) in query for word in record.get("keywords", [])):
         return any(normalize(topic) in query for topic in record.get("topics", []))
     # 自動取り込み記事は、明示された記事名や節名の完全一致を優先する。

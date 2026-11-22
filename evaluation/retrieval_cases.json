@@ -318,5 +318,90 @@
     "id": "tsunami-archive-reading",
     "question": "山田町津波誌はネットで読めますか？どの年代の津波が載っていますか？",
     "expected_sources": [["md-tsunami-history-archive"]]
+  },
+  {
+    "id": "sea-shine-name-only",
+    "question": "海よ光れ",
+    "expected_sources": [["md-umi-yo-hikare-overview"]]
+  },
+  {
+    "id": "sea-shine-kana",
+    "question": "うみよひかれってなに？",
+    "expected_sources": [["md-umi-yo-hikare-overview"]]
+  },
+  {
+    "id": "sea-shine-two-meanings",
+    "question": "「海よ光れ」は劇と新聞のどちらですか？",
+    "expected_sources": [["md-umi-yo-hikare-overview"]]
+  },
+  {
+    "id": "sea-shine-newsletter-issue",
+    "question": "学校新聞「海よ光れ」はいつ創刊され、震災後の第78号はいつ出ましたか？",
+    "expected_sources": [["md-umi-yo-hikare-newspaper"], ["md-umi-yo-hikare-issue-78"]]
+  },
+  {
+    "id": "sea-shine-book-author",
+    "question": "本の「海よ光れ！」を書いた人と出版社を教えて。",
+    "expected_sources": [["md-umi-yo-hikare-book"]]
+  },
+  {
+    "id": "sea-shine-radio-broadcast",
+    "question": "「海よ光れ」のラジオ番組はいつ放送されましたか？",
+    "expected_sources": [["md-umi-yo-hikare-radio"]]
+  },
+  {
+    "id": "sea-shine-tv-record",
+    "question": "テレビの「海よ光れ ～山田町大沢で輝く子どもたち～」の放送ライブラリーの番組IDは？",
+    "expected_sources": [["md-umi-yo-hikare-tv"]]
+  },
+  {
+    "id": "sea-shine-contest",
+    "question": "本の「海よ光れ！」は第70回読書感想文コンクールでどの学年向けの課題図書でしたか？",
+    "expected_sources": [["md-umi-yo-hikare-book-contest"]]
+  },
+  {
+    "id": "hachiman-role",
+    "question": "八幡大神楽は山田八幡宮のお祭りでどんな役割がありますか？",
+    "expected_sources": [["md-hachiman-daikagura"]]
+  },
+  {
+    "id": "hinoesaru-kana",
+    "question": "ひのえさるかいしょうのきって何ですか？",
+    "expected_sources": [["md-hinoesaru-tsunami-inscription"]]
+  },
+  {
+    "id": "etsuko-folk-tool",
+    "question": "「えつこ」は何に使った民具ですか？",
+    "expected_sources": [["md-traditional-etsuko"]]
+  },
+  {
+    "id": "orikasa-fort-alias",
+    "question": "山田町の「織笠館」は何と呼ばれ、どんな場所でしたか？",
+    "expected_sources": [["md-orikasa-fort"]]
+  },
+  {
+    "id": "yamada-rice-cracker-origin",
+    "question": "「山田せんべい」はもともとどこの神社の参道で売られていたの？",
+    "expected_sources": [["md-yamada-rice-cracker"]]
+  },
+  {
+    "id": "old-osawa-school-closure",
+    "question": "岩手県山田町の大沢小学校はいつ閉校しましたか？",
+    "expected_sources": [["md-osawa-school-closure"]]
+  },
+  {
+    "id": "rokkakuto-story",
+    "question": "六角塔は何のために建てられたんですか？",
+    "expected_sources": [["md-rokkakuto-monument"]]
+  },
+  {
+    "id": "orikasa-yagibushi-kana",
+    "question": "おりかさやぎぶしはどこの芸能ですか？",
+    "expected_sources": [["md-orikasa-yagibushi"]]
+  },
+  {
+    "id": "oura-toramai-catalog",
+    "question": "おおうらとらまい",
+    "expected_sources": [["regional-199"]]
   }
 ]

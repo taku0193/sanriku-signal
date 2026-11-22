@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { normalize, rankCurated, SEARCH_LIMIT } from "../shared/knowledge.js";
+import { hasNamedMatch, normalize, rankCurated, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import { projectRoot, readJsonFile, readTextFile } from "./files.js";
@@ -25,16 +25,20 @@ function loadMarkdown(file: string): SourceRecord {
       metadata.set(key, value);
     }
     const fields = ["title", "category", "source", "url", "checked", "keywords", "topics"] as const;
-    if (metadata.size !== fields.length || fields.some((field) => !metadata.has(field))) throw new Error();
+    if (metadata.size !== fields.length + Number(metadata.has("names")) || fields.some((field) => !metadata.has(field))) {
+      throw new Error();
+    }
     const [title, category, source, url, checked, keywordList, topicList] = fields.map((field) => metadata.get(field)!);
     const text = lines.slice(end + 1).join("\n").trim();
     const keywords = keywordList.split(",").map((term) => term.trim());
     const topics = topicList.split(",").map((term) => term.trim());
+    const names = metadata.get("names")?.split(",").map((term) => term.trim());
     const location = new URL(url);
     const date = new Date(checked + "T00:00:00Z");
     if (location.protocol !== "https:" || !location.hostname || date.toISOString().slice(0, 10) !== checked ||
-        !text || !keywords.every(Boolean) || !topics.every(Boolean)) throw new Error();
-    return { id: "md-" + file.slice(0, -3), title, category, source, url, checked, text, keywords, topics };
+        !text || !keywords.every(Boolean) || !topics.every(Boolean) || names?.some((term) => !term)) throw new Error();
+    return { id: "md-" + file.slice(0, -3), title, category, source, url, checked, text, keywords, topics,
+      ...(names ? { names } : {}) };
   } catch (error) {
     throw new Error(file + " の資料情報または本文の形式を確認してください。", { cause: error });
   }
@@ -52,6 +56,7 @@ export function loadRecords(): SourceRecord[] {
   const records = readJsonFile<Document[]>("sources.json").flatMap((document) => unpack(document));
   const markdown = readdirSync(new URL("knowledge/", projectRoot)).filter((file) => file.endsWith(".md")).sort();
   records.push(...markdown.map(loadMarkdown));
+  records.push(...readJsonFile<Document[]>("regional_resources.json").flatMap((document) => unpack(document)));
   for (const file of ["town_articles.json", "tourism_articles.json"]) {
     try {
       const data = readJsonFile<Import>(file);
@@ -105,7 +110,7 @@ export function rankSections(sections: readonly SourceRecord[], query: string, l
 }
 
 export function makeKeywordSearch(records: SourceRecord[]) {
-  const curated = records.filter((record) => record.keywords?.length);
+  const curated = records.filter((record) => record.keywords?.length || record.names?.length);
   const imported = records.filter((record) => record.published !== undefined).map((record) => ({
     record,
     title: lexicalText(record.title),
@@ -147,12 +152,14 @@ export function makeKeywordSearch(records: SourceRecord[]) {
       .slice(0, SEARCH_LIMIT).map(({ record }) => record);
   }
 
-  return (rawQuery: string): SourceRecord[] => {
+  return (rawQuery: string, original = rawQuery): SourceRecord[] => {
     const query = normalize(rawQuery);
-    const { records: direct, strongMatch } = rankCurated(curated, query);
+    const { records: direct, strongMatch } = rankCurated(curated, query, original);
     if (strongMatch) return direct.slice(0, SEARCH_LIMIT);
-    const fromArticles = searchImported(query);
-    const urls = new Set(fromArticles.map((record) => record.url));
-    return [...fromArticles, ...direct.filter((record) => !urls.has(record.url))].slice(0, SEARCH_LIMIT);
+    const named = direct.filter((record) => hasNamedMatch(record, query, original));
+    const namedUrls = new Set(named.map((record) => record.url));
+    const fromArticles = searchImported(query).filter(({ url }) => !namedUrls.has(url));
+    const urls = new Set([...named, ...fromArticles].map((record) => record.url));
+    return [...named, ...fromArticles, ...direct.filter((record) => !urls.has(record.url))].slice(0, SEARCH_LIMIT);
   };
 }

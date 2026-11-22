@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AskInput, GuideResult, Pending, Photo, ProgressEvent, QuestionAndAnswer, Source, StreamEvent } from "../frontend/types.js";
-import { formatEvidencePrompt } from "../shared/knowledge.js";
+import { formatEvidencePrompt, makeNameResolver } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { makeRetriever } from "./embeddings.js";
 import type { SearchMode } from "./embeddings.js";
@@ -171,6 +171,7 @@ interface ServerOptions {
 export function createGuideServer({ model, retrieval, records = loadRecords(), decide = model ? makeDecider(model) : undefined }: ServerOptions) {
   const retrieve = makeRetriever(records, retrieval);
   const readSource = makeSourceReader(records);
+  const resolveName = makeNameResolver(records);
   const checkpoints = new Map<string, { pending: Pending; records: SourceRecord[]; expiresAt: number }>();
 
   async function answer({ question, pending, history }: AskInput, signal: AbortSignal,
@@ -185,7 +186,7 @@ export function createGuideServer({ model, retrieval, records = loadRecords(), d
           saved.pending.field === pending.field &&
           saved.pending.district_hint === pending.district_hint ? saved : undefined;
         const { checkpoint, ...result } = await runTurn(question, decide, retrieve, {
-          pending, history, signal, searchMode: retrieval, readSource, checkpoint: resume?.records,
+          pending, history, signal, searchMode: retrieval, readSource, resolveName, checkpoint: resume?.records,
           onProgress: progress && ((stage, detail) => progress({ type: "progress", stage, ...(detail ? { detail } : {}) })),
           onDelta: progress && ((text) => progress({ type: "delta", text })),
         });

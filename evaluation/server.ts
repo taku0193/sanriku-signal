@@ -6,6 +6,7 @@ import { readJsonFile } from "../server/files.js";
 import { DEFAULT_MODEL } from "../server/ollama.js";
 import { makeDecider, runTurn } from "../server/react.js";
 import { loadRecords, makeSourceReader } from "../server/records.js";
+import { makeNameResolver } from "../shared/knowledge.js";
 
 interface Expectations {
   question: string;
@@ -39,6 +40,7 @@ const records = loadRecords();
 const retrieve = makeRetriever(records, "hybrid");
 const decide = makeDecider(values.model);
 const readSource = makeSourceReader(records);
+const resolveName = makeNameResolver(records);
 
 async function evaluateRetrieval() {
   const cases = readJsonFile<RetrievalCase[]>("evaluation/retrieval_cases.json");
@@ -70,7 +72,7 @@ async function evaluateAnswer(item: AnswerCase) {
     let firstAction: string | undefined;
     const started = performance.now();
     previous = await runTurn(turn.question, decide, retrieve, {
-      pending: previous?.pending, checkpoint: previous?.checkpoint, today: expected.as_of, readSource,
+      pending: previous?.pending, checkpoint: previous?.checkpoint, today: expected.as_of, readSource, resolveName,
       onAction: (event) => {
         firstAction ??= event.action;
         actions.push(event);

@@ -8,6 +8,7 @@ export interface SourceRecord extends Source {
   checked: string;
   keywords?: string[];
   topics?: string[];
+  names?: string[];
   heading?: string;
   calendar_answer?: string;
 }
@@ -29,16 +30,64 @@ export function hasTopic(record: SourceRecord, query: string): boolean {
     (record.topics ?? []).some((word) => query.includes(normalize(word)));
 }
 
-export function rankCurated(records: readonly SourceRecord[], query: string) {
+function nameText(text: string): string {
+  return normalize(text).replace(/[\s\p{P}]/gu, "");
+}
+
+function nameSubject(compact: string): string {
+  return compact.replace(/(?:(?:って|とは|について)(?:何|なに|教えて|おしえて)?(?:ですか|ください)?|は(?:何|なに)(?:ですか)?)$/u, "");
+}
+
+function nameQueries(text: string): string[] {
+  const compact = nameText(text);
+  return [compact, nameSubject(compact), ...Array.from(text.matchAll(/[「『]([^」』]+)[」』]/gu), ([, name]) => nameText(name))];
+}
+
+export function makeNameResolver(records: readonly SourceRecord[]) {
+  const titles = new Map<string, string | undefined>();
+  for (const { names } of records) {
+    if (!names?.length) continue;
+    const [title] = names;
+    for (const alias of names) {
+      const key = nameText(alias);
+      if (!key) continue;
+      if (!titles.has(key)) titles.set(key, title);
+      else if (titles.get(key) !== title) titles.set(key, undefined);
+    }
+  }
+  return (question: string) => {
+    const compact = nameText(question);
+    return titles.get(titles.has(compact) ? compact : nameSubject(compact));
+  };
+}
+
+function matchedNameLength(record: SourceRecord, queries: string[]): number {
+  let length = 0;
+  for (const alias of record.names ?? []) {
+    const name = nameText(alias);
+    if (name && queries.some((query) => query === name || (name.length >= 4 && query.includes(name)))) {
+      length = Math.max(length, name.length);
+    }
+  }
+  return length;
+}
+
+export function hasNamedMatch(record: SourceRecord, ...wording: string[]): boolean {
+  return matchedNameLength(record, wording.flatMap(nameQueries)) > 0;
+}
+
+export function rankCurated(records: readonly SourceRecord[], query: string, original = query) {
+  const queries = [query, original].flatMap(nameQueries);
   const matches = [];
   for (const record of records) {
     const keywords = record.keywords?.filter((term) => query.includes(normalize(term))) ?? [];
-    if (!keywords.length) continue;
+    const nameLength = matchedNameLength(record, queries);
+    if (!keywords.length && !nameLength) continue;
     const topicScore = (record.topics ?? []).reduce((score, topic) =>
       score + (query.includes(normalize(topic)) ? topic.length : 0), 0);
-    matches.push({ record, topicScore, keywordLength: Math.max(...keywords.map((term) => term.length)) });
+    matches.push({ record, topicScore, nameLength, keywordLength: Math.max(0, ...keywords.map((term) => term.length)) });
   }
-  matches.sort((a, b) => b.topicScore - a.topicScore || b.keywordLength - a.keywordLength);
+  matches.sort((a, b) => b.topicScore - a.topicScore || b.nameLength - a.nameLength || b.keywordLength - a.keywordLength);
 
   const urls = new Set<string>();
   const prioritized: SourceRecord[] = [];

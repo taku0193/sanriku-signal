@@ -140,6 +140,8 @@ def asks_collection_date(text):
         return True
     if asks_reservation_deadline(text):
         return False
+    if re.search(r"創刊|発行|刊行|出版", text) and not re.search(r"ごみ|収集|回収|出[すせ]|捨て|処分", text):
+        return False
     waste = re.search(r"ごみ|ぺっとぼとる|空き?びん|乾電池|ぷら|[段だん]ぼーる|缶|新聞|紙ぱっく|蛍光[管灯]|水銀", text)
     timing = re.search(r"今日|明日|次回|次の|何日|何曜日|[0-9]+月|いつ(?!までに)", text)
     return bool(waste and timing)

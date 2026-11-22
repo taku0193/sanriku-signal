@@ -986,5 +986,224 @@
       "required_sources": {
         "md-tsunami-history-archive": "https://www.town.yamada.iwate.jp/docs/743.html"
       }
+    },
+    {
+      "id": "sea-shine-name-only",
+      "category": "文化・地域史",
+      "question": "海よ光れ",
+      "required_patterns": [
+        "大沢小学校|大沢小",
+        "全校(?:表現)?劇|演劇",
+        "学校新聞"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-overview": "https://iwate-archive.pref.iwate.jp/education/fukkou/pdf/fukudokuhon/kaitei.chuugaku.pdf#page=10"
+      }
+    },
+    {
+      "id": "sea-shine-kana",
+      "category": "文化・地域史",
+      "question": "うみよひかれってなに？",
+      "required_patterns": [
+        "大沢小学校|大沢小",
+        "劇",
+        "新聞"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-overview": "https://iwate-archive.pref.iwate.jp/education/fukkou/pdf/fukudokuhon/kaitei.chuugaku.pdf#page=10"
+      }
+    },
+    {
+      "id": "sea-shine-two-meanings",
+      "category": "文化・地域史",
+      "question": "「海よ光れ」は劇と新聞のどちらですか？",
+      "required_patterns": [
+        "大沢小学校|大沢小",
+        "1988年|昭和63年",
+        "2004年|平成16年"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-overview": "https://iwate-archive.pref.iwate.jp/education/fukkou/pdf/fukudokuhon/kaitei.chuugaku.pdf#page=10"
+      }
+    },
+    {
+      "id": "sea-shine-newsletter-issue",
+      "category": "文化・地域史",
+      "question": "学校新聞「海よ光れ」はいつ創刊され、震災後の第78号はいつ出ましたか？",
+      "required_patterns": [
+        "2004年9月|平成16年9月",
+        "2011年4月19日|平成23年4月19日"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-newspaper": "https://www.town.yamada.iwate.jp/fs/2/3/0/4/_/kirokusi_2.pdf#page=6",
+        "md-umi-yo-hikare-issue-78": "https://iwate-archive.pref.iwate.jp/education/fukkou/pdf/fukudokuhon/kaitei.chuugaku.pdf#page=10"
+      }
+    },
+    {
+      "id": "sea-shine-book-author",
+      "category": "文化・地域史",
+      "question": "本の「海よ光れ！」を書いた人と出版社を教えて。",
+      "required_patterns": [
+        "田沢五月",
+        "国土社"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-book": "https://www.kokudosha.co.jp/search/info.php?isbn=9784337310131"
+      }
+    },
+    {
+      "id": "sea-shine-radio-broadcast",
+      "category": "文化・地域史",
+      "question": "「海よ光れ」のラジオ番組はいつ放送されましたか？",
+      "required_patterns": [
+        "2020年5月31日|令和2年5月31日"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-radio": "https://www.bpcj.or.jp/program/detail/R22897/"
+      }
+    },
+    {
+      "id": "sea-shine-tv-record",
+      "category": "文化・地域史",
+      "question": "テレビの「海よ光れ ～山田町大沢で輝く子どもたち～」の放送ライブラリーの番組IDは？",
+      "required_patterns": [
+        "209180"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-tv": "https://www.bpcj.or.jp/program/detail/209180/"
+      },
+      "forbidden_patterns": [
+        "R22897"
+      ]
+    },
+    {
+      "id": "sea-shine-contest",
+      "category": "文化・地域史",
+      "question": "本の「海よ光れ！」は第70回読書感想文コンクールでどの学年向けの課題図書でしたか？",
+      "required_patterns": [
+        "小学校高学年|小学5.{0,4}6年|5.{0,4}6年生"
+      ],
+      "required_sources": {
+        "md-umi-yo-hikare-book-contest": "https://www.library.pref.okinawa.jp/notice/2024/70.html"
+      }
+    },
+    {
+      "id": "hachiman-role",
+      "category": "文化・地域史",
+      "question": "八幡大神楽は山田八幡宮のお祭りでどんな役割がありますか？",
+      "required_patterns": [
+        "神輿|みこし",
+        "前",
+        "清め"
+      ],
+      "required_sources": {
+        "md-hachiman-daikagura": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=188"
+      }
+    },
+    {
+      "id": "hinoesaru-kana",
+      "category": "文化・地域史",
+      "question": "ひのえさるかいしょうのきって何ですか？",
+      "required_patterns": [
+        "丙申海嘯之記",
+        "明治三陸津波|明治29年|1896年",
+        "石碑|津波碑"
+      ],
+      "required_sources": {
+        "md-hinoesaru-tsunami-inscription": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=114"
+      }
+    },
+    {
+      "id": "etsuko-folk-tool",
+      "category": "文化・地域史",
+      "question": "「えつこ」は何に使った民具ですか？",
+      "required_patterns": [
+        "子ども|子供|幼児",
+        "入れ|寝かせ|入れておく"
+      ],
+      "required_sources": {
+        "md-traditional-etsuko": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=176"
+      }
+    },
+    {
+      "id": "orikasa-fort-alias",
+      "category": "文化・地域史",
+      "question": "山田町の「織笠館」は何と呼ばれ、どんな場所でしたか？",
+      "required_patterns": [
+        "立神館",
+        "中世",
+        "館跡|館の跡|館の遺跡"
+      ],
+      "required_sources": {
+        "md-orikasa-fort": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=144"
+      }
+    },
+    {
+      "id": "yamada-rice-cracker-origin",
+      "category": "文化・地域史",
+      "question": "「山田せんべい」はもともとどこの神社の参道で売られていたの？",
+      "required_patterns": [
+        "関口神社"
+      ],
+      "required_sources": {
+        "md-yamada-rice-cracker": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=169"
+      }
+    },
+    {
+      "id": "old-osawa-school-closure",
+      "category": "文化・地域史",
+      "question": "岩手県山田町の大沢小学校はいつ閉校しましたか？",
+      "required_patterns": [
+        "2020年(?:[(]令和2年[)])?3月|令和2年3月"
+      ],
+      "required_sources": {
+        "md-osawa-school-closure": "https://www.town.yamada.iwate.jp/docs/2815.html"
+      }
+    },
+    {
+      "id": "rokkakuto-story",
+      "category": "文化・地域史",
+      "question": "六角塔は何のために建てられたんですか？",
+      "required_patterns": [
+        "牧庵鞭牛",
+        "道づくり|道作り|街道",
+        "功績|偉業|たたえ|顕彰"
+      ],
+      "required_sources": {
+        "md-rokkakuto-monument": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=8"
+      }
+    },
+    {
+      "id": "orikasa-yagibushi-kana",
+      "category": "文化・地域史",
+      "question": "おりかさやぎぶしはどこの芸能ですか？",
+      "required_patterns": [
+        "織笠地区",
+        "芸能"
+      ],
+      "required_sources": {
+        "md-orikasa-yagibushi": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=192"
+      }
+    },
+    {
+      "id": "oura-toramai-catalog",
+      "category": "文化・地域史",
+      "question": "おおうらとらまい",
+      "required_patterns": [
+        "大浦虎舞",
+        "民俗芸能|郷土芸能"
+      ],
+      "required_sources": {
+        "regional-199": "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=199"
+      }
+    },
+    {
+      "id": "invented-shine-title",
+      "category": "文化・地域史",
+      "question": "山田町の大沢小学校の学校新聞『星よ光れ』はいつ創刊されましたか？",
+      "required_patterns": [
+        "根拠|確認できません"
+      ],
+      "required_sources": {}
     }
 ]

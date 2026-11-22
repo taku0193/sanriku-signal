@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { endianness } from "node:os";
-import { hasTopic, normalize, SEARCH_LIMIT } from "../shared/knowledge.js";
+import { hasNamedMatch, hasTopic, normalize, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import { isObject, projectRoot } from "./files.js";
@@ -107,7 +107,7 @@ function semanticSearch(index: VectorIndex, query: Float32Array) {
   return [...pages.values()].sort((a, b) => b.score - a.score).slice(0, 12).map(({ record }) => record);
 }
 
-function hybrid(keyword: SourceRecord[], semantic: SourceRecord[], rawQuery: string) {
+function hybrid(keyword: SourceRecord[], semantic: SourceRecord[], rawQuery: string, original: string) {
   const ranks = new Map<string, { score: number; record: SourceRecord }>();
   for (const list of [keyword, semantic]) {
     list.forEach((record, i) => {
@@ -118,6 +118,7 @@ function hybrid(keyword: SourceRecord[], semantic: SourceRecord[], rawQuery: str
   const query = normalize(rawQuery);
   const lexicalQuery = lexicalText(query);
   const result = keyword.filter((record) => {
+    if (hasNamedMatch(record, query, original)) return true;
     if (record.keywords?.some((word) => query.includes(normalize(word)))) return hasTopic(record, query);
     return [record.title.split(" / ", 1)[0], record.heading ?? ""].map(lexicalText)
       .some((term) => term.length >= 4 && lexicalQuery.includes(term));
@@ -140,7 +141,7 @@ function hybrid(keyword: SourceRecord[], semantic: SourceRecord[], rawQuery: str
 
 export function makeRetriever(records: SourceRecord[], mode: SearchMode, path = new URL("embeddings-cache.json", projectRoot)): Retriever {
   const keyword = makeKeywordSearch(records);
-  if (mode === "keyword") return async (query) => ({ records: keyword(normalizeQuery(query)), mode });
+  if (mode === "keyword") return async (query) => ({ records: keyword(normalizeQuery(query), query), mode });
 
   const documents = documentHashes(records);
   const model = process.env.YAMADA_EMBED_MODEL || DEFAULT_MODEL;
@@ -159,18 +160,18 @@ export function makeRetriever(records: SourceRecord[], mode: SearchMode, path = 
 
   return async (rawQuery, signal, strategy = mode) => {
     const query = normalizeQuery(rawQuery);
-    if (strategy === "keyword") return { records: keyword(query), mode: "keyword" };
+    if (strategy === "keyword") return { records: keyword(query, rawQuery), mode: "keyword" };
     try {
       const index = await getIndex();
       if (!index || await currentDigest(url, tag, signal) !== index.digest) throw new Error("埋め込み索引が一致しません。");
       const vector = await embed(url, model, query, index.dimensions, signal);
       if (await currentDigest(url, tag, signal) !== index.digest) throw new Error("検索中に埋め込みモデルが変わりました。");
       const semantic = semanticSearch(index, vector);
-      const hits = strategy === "semantic" ? semantic.slice(0, SEARCH_LIMIT) : hybrid(keyword(query), semantic, query);
+      const hits = strategy === "semantic" ? semantic.slice(0, SEARCH_LIMIT) : hybrid(keyword(query, rawQuery), semantic, query, rawQuery);
       return { records: hits, mode: strategy };
     } catch (error) {
       if (signal?.aborted) throw signal.reason;
-      return { records: keyword(query), mode: "keyword_fallback" };
+      return { records: keyword(query, rawQuery), mode: "keyword_fallback" };
     }
   };
 }

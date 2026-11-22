@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import type { GuideResult, StreamEvent } from "../frontend/types.js";
+import { makeNameResolver } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import { AmbiguousDistrict, collectionBounds, findCollectionDays, namedWasteTypes, singleDistrictHint, todayInTokyo } from "../server/calendars.js";
 import { makeRetriever } from "../server/embeddings.js";
@@ -40,6 +41,35 @@ test("読みと1文字の誤字から、同じ公式資料を検索する", asyn
   assert.equal(normalizeQuery("かがくかんれんのほん"), "かがくかんれんのほん");
   assert.equal(normalizeQuery("わにわに水晶博物館のにゅうかんりょう"), "わにわに水晶博物館の入館料");
   assert.equal(normalizeQuery("おおさ3くのもやさないごみ"), "おおさ3くのもやさないごみ");
+});
+
+test("固有名や読みから、地域資料と同名の作品を照合する", async () => {
+  for (const question of ["海よ光れ", "『海よ、光れ！』", "うみよひかれってなに？", "うみよひかふ"]) {
+    assert.equal((await keyword(question)).records[0]?.id, "md-umi-yo-hikare-overview", question);
+  }
+  assert.equal((await keyword("海よ光れのラジオ放送日")).records[0]?.id, "md-umi-yo-hikare-radio");
+  assert.equal((await keyword("『八幡館』って何？")).records[0]?.id, "regional-143");
+  assert.ok((await keyword("おおうらとらまい")).records.some(({ id }) => id === "regional-199"));
+  assert.ok(!(await keyword("星よ光れ")).records.some(({ id }) => id.startsWith("md-umi-yo-hikare")));
+
+  const resolveName = makeNameResolver(records);
+  const monument = await runTurn("ひのえさるかいしょうのきって何ですか？", async (state, actions) => {
+    if (!state.observations.length) {
+      assert.deepEqual(actions, ["search"]);
+      return { action: "search", target: "official_documents", query: "ひのえさるかいしょう きって" };
+    }
+    assert.equal(state.observations[0].query, "丙申海嘯之記");
+    return { action: "answer", sources: ["md-hinoesaru-tsunami-inscription"], answer: "明治三陸津波を伝える石碑です。" };
+  }, keyword, { resolveName });
+  assert.equal(monument.action, "answer");
+
+  const newspaper = await runTurn("学校新聞『海よ光れ』はいつ創刊されましたか？", async (state) => {
+    assert.equal(state.collection_hints, undefined);
+    return state.observations.length
+      ? { action: "answer", sources: ["md-umi-yo-hikare-newspaper"], answer: "2004年9月に創刊されました。" }
+      : { action: "search", target: "official_documents", query: "海よ光れ 学校新聞 創刊" };
+  }, keyword);
+  assert.equal(newspaper.action, "answer");
 });
 
 test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", async () => {

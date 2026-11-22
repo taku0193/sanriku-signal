@@ -16,7 +16,7 @@ export interface OfflineData {
 
 export function searchOffline(question: string, data: OfflineData): GuideResult {
   const { records, limit, instructions, noEvidence, photos = [], photoLimit = 2 } = data;
-  const sources = rankCurated(records, normalize(normalizeQuery(question))).records.slice(0, limit);
+  const sources = rankCurated(records, normalize(normalizeQuery(question)), question).records.slice(0, limit);
   const sourceIds = new Set(sources.map((record) => record.id));
 
   return {
