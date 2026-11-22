@@ -422,6 +422,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   line-height: 1.5;
 }
 .quiet-button:hover, .sources > summary:hover { border-color: var(--line); background: #2a4c42; }
+.retry-button { min-height: 2.75rem; margin-top: .65rem; border-color: var(--line); }
 .copy-status { color: var(--muted); font-size: .78rem; }
 .answer-photos {
   display: grid;

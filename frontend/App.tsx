@@ -393,7 +393,9 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
                 </div>
               </section>
               <section ref={conversation} id="conversation" className="conversation content" aria-label="会話" hidden={!hasTurns}>
-                {turns.map((turn) => <ChatTurn key={turn.id} turn={turn} onRestore={restoreQuestion} />)}
+                {turns.map((turn) => <ChatTurn key={turn.id} turn={turn} onRestore={restoreQuestion}
+                  onRetry={!busy && turn === turns.at(-1) && turn.result?.mode === "search" &&
+                    turn.result.notice && turn.result.pending === pending ? () => void send(turn.question) : undefined} />)}
               </section>
             </div>
             <button id="jump-latest" className="jump-latest" type="button" aria-controls="conversation" hidden={!showJump} onClick={jumpToLatest}>

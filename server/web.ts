@@ -11,7 +11,7 @@ import { isObject, projectRoot, readJsonFile } from "./files.js";
 import { OllamaError } from "./ollama.js";
 import { KnowledgeSearchError, makeDecider, runTurn } from "./react.js";
 import type { Decider } from "./react.js";
-import { ANSWER_INSTRUCTIONS, loadRecords, makeSourceReader, NO_EVIDENCE } from "./records.js";
+import { ANSWER_INSTRUCTIONS, loadRecords, makeSourceReader, NO_EVIDENCE, summarizeSearchFallback } from "./records.js";
 
 const QUESTION_LIMIT = 400;
 const REQUEST_LIMIT = 16_384;
@@ -215,7 +215,8 @@ export function createGuideServer({ model, retrieval, records = loadRecords(), d
     const query = pending ? pending.question + "\n" + question : question;
     const { records: hits } = await retrieve(query, signal);
     return {
-      mode: "search", action: "search", answer: hits.length ? "" : NO_EVIDENCE, pending, notice,
+      mode: "search", action: "search", answer: notice ? summarizeSearchFallback(query, hits) : hits.length ? "" : NO_EVIDENCE,
+      pending, notice,
       sources: hits.map(publicSource), photos: photosFor(hits),
       prompt: hits.length ? formatEvidencePrompt(query, hits, ANSWER_INSTRUCTIONS) : "",
     };

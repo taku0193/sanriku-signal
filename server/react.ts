@@ -9,7 +9,7 @@ import {
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
 import { isObject, readTextFile } from "./files.js";
-import { chatJson, OllamaError } from "./ollama.js";
+import { chatJson, OllamaResponseError } from "./ollama.js";
 import { asksForUpcomingEvent, documentsEventYear, documentsUpcomingEvent, requestedEventYear } from "./periods.js";
 import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
 import type { SourceReader } from "./records.js";
@@ -238,7 +238,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       },
     });
     if (!ACTIONS.some((action) => action === decision.action)) {
-      throw new OllamaError("AIから検索や回答に必要な指示を読み取れませんでした。");
+      throw new OllamaResponseError("AIから検索や回答に必要な指示を読み取れませんでした。");
     }
     if (checkConstraints && decision.action === "answer" && actions.includes("answer") &&
         Array.isArray(decision.sources) && typeof decision.answer === "string") {
@@ -512,6 +512,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   let searchDetail: string | undefined;
   let insufficientReason: unknown;
   let referenceOnly: string | undefined;
+  let retriedResponse = false;
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
@@ -539,9 +540,19 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
     const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion
       ? streamGroundedAnswer(evidence, onDelta, requiresSubjectEvidence ? supportsRequestedSubject : undefined) : undefined;
-    const decision = await decide(referenceOnly
+    const decisionState = referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
-      : state, actions, signal, stream);
+      : state;
+    let decision: Awaited<ReturnType<Decider>>;
+    try {
+      decision = await decide(decisionState, actions, signal, stream);
+    } catch (error) {
+      if (!(error instanceof OllamaResponseError) || retriedResponse) throw error;
+      signal?.throwIfAborted();
+      retriedResponse = true;
+      onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
+      decision = await decide(decisionState, actions, signal);
+    }
     const action = actions.find((allowed) => allowed === decision.action);
     if (!action) break;
 

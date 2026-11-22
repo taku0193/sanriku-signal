@@ -13,12 +13,22 @@ import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
 import { withSourcePeriods } from "../server/periods.js";
 import { makeDecider, runTurn, streamGroundedAnswer } from "../server/react.js";
-import { loadRecords, makeSourceReader, NO_EVIDENCE } from "../server/records.js";
+import { loadRecords, makeSourceReader, NO_EVIDENCE, summarizeSearchFallback } from "../server/records.js";
 import { createGuideServer, readHistory, readPending } from "../server/web.js";
 
 const records = loadRecords();
 const keyword = makeRetriever(records, "keyword");
 const searchMuseum = { action: "search", target: "official_documents", query: "鯨と海の科学館 入館料", missing_fact: "科学館の入館料" };
+
+test("検索に切り替わっても、質問と一致した資料の記載を本文で返す", async () => {
+  const exact = "鯨と海の科学館の大人の入館料は？";
+  const { records: hits } = await keyword(exact);
+  assert.match(summarizeSearchFallback(exact, hits), /入館料.*大人300円/s);
+  for (const question of ["明日の鯨と海の科学館の混雑と入館料は？", "『海鳥科学館分館』の大人の入館料は？", "鯨と海の科学館以外の入館料は？"]) {
+    assert.equal(summarizeSearchFallback(question, hits), "見つかった資料から、質問への答えを確認できませんでした。");
+  }
+  assert.equal(summarizeSearchFallback(exact, []), NO_EVIDENCE);
+});
 
 test("操作案内カードは質問に対応する資料と必要な根拠がそろった場合に表示できる", () => {
   const certificate = records.find(({ id }) => id === "md-resident-card-mynumber-proxy")!;
@@ -519,6 +529,7 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
   });
   let missingQueries = 0;
   let stalledAfterHeaders = false;
+  let recoveredAttempts = 0;
   const reviewedAnswers: string[] = [];
   const ollama = createServer(async (request, response) => {
     let body = "";
@@ -535,6 +546,15 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
         stalledAfterHeaders = true;
         response.writeHead(200, { "Content-Type": "application/x-ndjson" });
         response.write('{"message":');
+      }
+    } else if (request.url === "/recover-response") {
+      if (!state.observations.length) send(searchMuseum);
+      else {
+        recoveredAttempts++;
+        assert.equal(state.observations[0].source_ids[0], "museum-fees");
+        if (stream) {
+          response.end(JSON.stringify({ message: { content: '{"action":"answer","sources":["museum-fees"],"answer":"作成中' } }) + "\n");
+        } else send({ action: "answer", sources: ["museum-fees"], answer: "大人の入館料は300円です。" });
       }
     } else if (request.url === "/http-error") {
       response.writeHead(503).end();
@@ -569,6 +589,7 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
   await Promise.all([once(ollama, "listening"), once(guide, "listening")]);
   const stubUrl = `http://127.0.0.1:${(ollama.address() as AddressInfo).port}`;
   const guideUrl = `http://127.0.0.1:${(guide.address() as AddressInfo).port}/api/ask`;
+  let lastEvents: StreamEvent[] = [];
   const ask = async (endpoint: string, question = "鯨と海の科学館の大人の入館料は？") => {
     process.env.YAMADA_CHAT_URL = endpoint;
     const response = await fetch(guideUrl, {
@@ -577,8 +598,8 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
       body: JSON.stringify({ question }),
     });
     assert.equal(response.status, 200);
-    const events: StreamEvent[] = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
-    const last = events.at(-1);
+    lastEvents = (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+    const last = lastEvents.at(-1);
     if (last?.type !== "result") throw new Error("結果イベントがありません。");
     return last.data;
   };
@@ -599,11 +620,23 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
     assert.equal(result.mode, "search");
     assert.equal(result.action, "search");
     assert.equal(result.notice, message + "公式資料の検索結果を表示しています。");
+    assert.match(result.answer, /大人300円/);
     assert.ok(result.sources.some(({ url, text }) =>
       url === "https://yamada-kujirakan.jp/facility/" && text?.includes("大人300円")));
   }
   assert.equal(missingQueries, 3);
   assert.equal(stalledAfterHeaders, true);
+  const recovered = await ask(stubUrl + "/recover-response");
+  assert.equal(recoveredAttempts, 2);
+  assert.equal(recovered.mode, "ai");
+  assert.equal(recovered.answer, "大人の入館料は300円です。");
+  const partial = lastEvents.findIndex((event) => event.type === "delta" && event.text === "作成中");
+  assert.ok(partial >= 0);
+  assert.ok(lastEvents.slice(partial + 1).some((event) => event.type === "progress" && event.stage === "reviewing"));
+
+  const liveFallback = await ask(stubUrl + "/http-error", "明日の道の駅やまだの混雑を教えて。");
+  assert.match(liveFallback.answer, /確認できませんでした/);
+  assert.doesNotMatch(liveFallback.answer, /9:00|18:00/);
   const insufficient = await ask(stubUrl + "/unknown-crowd", "明日の道の駅やまだは混んでいますか？");
   assert.equal(insufficient.mode, "ai");
   assert.equal(insufficient.action, "insufficient");

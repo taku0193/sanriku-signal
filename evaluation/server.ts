@@ -81,6 +81,7 @@ async function evaluateAnswer(item: AnswerCase) {
           firstAction ??= event.action;
           actions.push(event);
         },
+        onProgress: () => { chunks.length = 0; },
         onDelta: (text) => chunks.push(text),
       });
     } catch (error) {

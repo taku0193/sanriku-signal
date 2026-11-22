@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { hasNamedMatch, normalize, rankCurated, SEARCH_LIMIT } from "../shared/knowledge.js";
+import { hasNamedMatch, hasTopic, mentionsSubject, normalize, quotedSubject, rankCurated, SEARCH_LIMIT } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import { projectRoot, readJsonFile, readTextFile } from "./files.js";
@@ -7,6 +7,24 @@ import { withSourcePeriods } from "./periods.js";
 
 export const NO_EVIDENCE = "登録した資料からは、質問に答えるための根拠を確認できませんでした。";
 export const ANSWER_INSTRUCTIONS = readTextFile("prompts/answer.md").trimEnd();
+
+export function summarizeSearchFallback(question: string, records: SourceRecord[]): string {
+  if (!records.length) return NO_EVIDENCE;
+  const unconfirmed = "見つかった資料から、質問への答えを確認できませんでした。";
+  const wording = normalize(normalizeQuery(question));
+  if (/今日|きょう|明日|あした|今朝|今夜|今の|現在|ただいま|直近|次の|次回|今年|来年|来月|今週|当日|遅れ|混雑|運休中|以外|ではなく|じゃなく|比較|どちら|\d+年|\d+月\d+日/.test(wording)) {
+    return unconfirmed;
+  }
+
+  const subject = quotedSubject(question);
+  const matches = records.filter((record) => !record.published && !record.period?.through &&
+    record.text.length <= 500 && hasTopic(record, wording) &&
+    (!subject || [record.title, ...(record.names ?? [])].some((name) => mentionsSubject(name, subject))));
+  if (matches.length !== 1) return unconfirmed;
+
+  const [record] = matches;
+  return `「${record.title}」の記載\n\n${record.text}`;
+}
 
 type SourceMetadata = Pick<SourceRecord, "category" | "source" | "url" | "checked" | "published">;
 type Document = SourceMetadata & { records: Omit<SourceRecord, keyof SourceMetadata>[] };

@@ -25,15 +25,17 @@ function linkFor(value?: string): string | undefined {
 interface ChatTurnProps {
   turn: Turn;
   onRestore: (question: string) => void;
+  onRetry?: () => void;
 }
 
-export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
+export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
   const result = turn.result;
   const { stage, searchDetail } = turn;
   const sources = result?.sources ?? [];
   const nextAction = result?.action === "answer"
     ? actionFacts([turn.followUpQuestion, turn.question].filter(Boolean).join("\n"), sources) : undefined;
-  const facts = !nextAction && (result?.action === "search" || result?.action === "answer") ? museumFacts(turn.question, sources) : undefined;
+  const facts = !nextAction && (result?.action === "answer" || (result?.action === "search" && !result.notice))
+    ? museumFacts(turn.question, sources) : undefined;
   const hasCard = Boolean(nextAction || facts);
   const photos = result?.photos ?? [];
   const copyText = result?.mode === "ai" ? result.answer : result?.prompt ?? "";
@@ -81,6 +83,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
                 {nextAction ? <GuideActionCard facts={nextAction} /> : facts ? <MuseumCard facts={facts} /> :
                   result.answer ? <AnswerText text={result.answer} /> :
                   result.mode === "search" && <p>質問に関連する資料が見つかりました。</p>}
+                {onRetry && <button type="button" className="quiet-button retry-button" onClick={onRetry}>AI回答を再試行</button>}
               </>
             ) : turn.failure ? (
               <>

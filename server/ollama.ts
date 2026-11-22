@@ -3,6 +3,7 @@ import { isObject } from "./files.js";
 export const DEFAULT_MODEL = "gemma4:12b";
 
 export class OllamaError extends Error {}
+export class OllamaResponseError extends OllamaError {}
 
 export function ollamaSignal(timeout: number, signal?: AbortSignal) {
   const deadline = AbortSignal.timeout(timeout);
@@ -102,6 +103,6 @@ export async function chatJson({ model, messages, format, signal, onContent, tim
     signal?.throwIfAborted();
     if (requestSignal.aborted) throw new OllamaError("AIの回答生成がタイムアウトしました。", { cause: error });
     if (error instanceof OllamaError) throw error;
-    throw new OllamaError("AIから受け取った応答を読み取れませんでした。", { cause: error });
+    throw new OllamaResponseError("AIから受け取った応答を読み取れませんでした。", { cause: error });
   }
 }
