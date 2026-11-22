@@ -448,7 +448,7 @@
     "question": "山田湾のサッパ船クルーズは何人で申し込めますか？予約は何日前までですか？",
     "expected_answer": "2〜4名で、希望日の2週間前まで。",
     "required_patterns": [
-      "2\\s*[〜～~ー–−-]\\s*4\\s*(?:人|名)",
+      "2\\s*(?:[〜～~ー–−-]|(?:人|名)\\s*(?:から|[〜～~ー–−-]))\\s*4\\s*(?:人|名)",
       "(?:2週間前|14日前)"
     ],
     "required_sources": {
@@ -467,5 +467,37 @@
     "required_sources": {
       "md-yamada-bay-sappa-cruise": "https://www.yamada-kankou.jp/plan/plan-5684/"
     }
+  },
+  {
+    "id": "toyomane-ogata-holiday",
+    "category": "飲食店",
+    "question": "豊間根の食堂「復活おがた」の定休日は何曜日ですか？",
+    "expected_answer": "観光協会の豊間根エリアの飲食店ガイドでは日曜日。",
+    "required_patterns": ["日曜"],
+    "required_sources": {"tourism-area-toyomane-1": "https://www.yamada-kankou.jp/area/toyomane/"}
+  },
+  {
+    "id": "kujirayama-trail-distance",
+    "category": "観光",
+    "question": "みちのく潮風トレイルで陸中海岸青少年の家から鯨山へ登る往復ルートは何キロですか？",
+    "expected_answer": "陸中海岸青少年の家を起点とする往復ルートは約7.0km。",
+    "required_patterns": ["7(?:\\.0)?\\s*(?:km|㎞|キロ)", "往復"],
+    "required_sources": {"tourism-shiokaze-trail-report1-2": "https://www.yamada-kankou.jp/shiokaze-trail/report1/"}
+  },
+  {
+    "id": "osawa-population-2026-11",
+    "category": "町政情報",
+    "question": "2026年11月1日現在の山田町の大沢地区の人口と世帯数は？",
+    "expected_answer": "大沢地区は1,522人・677世帯。",
+    "required_patterns": ["1[,.]?522\\s*人", "677\\s*世帯"],
+    "required_sources": {"md-population-2026-11": "https://www.town.yamada.iwate.jp/fs/1/4/2/2/6/5/_/2026_1101jinkou.pdf#page=1"}
+  },
+  {
+    "id": "national-insurance-without-myna",
+    "category": "くらし",
+    "question": "山田町の国保に入っています。マイナ保険証がない場合、病院で何を使いますか？",
+    "expected_answer": "資格確認書を使う。",
+    "required_patterns": ["資格確認書"],
+    "required_sources": {"md-national-health-insurance-card": "https://www.town.yamada.iwate.jp/docs/7795.html"}
   }
 ]

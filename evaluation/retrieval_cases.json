@@ -131,5 +131,33 @@
     "kind": "paraphrase",
     "question": "山田町の県立病院へ行くときの住所を教えてください。",
     "expected_sources": [["iwate-yamada-hospital", "town-iju_benri-9", "town-446-1"]]
+  },
+  {
+    "id": "toyomane-ogata-holiday",
+    "category": "飲食店",
+    "kind": "exact",
+    "question": "豊間根の食堂「復活おがた」の定休日は何曜日ですか？",
+    "expected_sources": [["tourism-area-toyomane-1"]]
+  },
+  {
+    "id": "kujirayama-trail-distance",
+    "category": "観光",
+    "kind": "exact",
+    "question": "みちのく潮風トレイルで陸中海岸青少年の家から鯨山へ登る往復ルートは何キロですか？",
+    "expected_sources": [["tourism-shiokaze-trail-report1-2"]]
+  },
+  {
+    "id": "osawa-population-2026-11",
+    "category": "町政情報",
+    "kind": "exact",
+    "question": "2026年11月1日現在の山田町の大沢地区の人口と世帯数は？",
+    "expected_sources": [["md-population-2026-11"]]
+  },
+  {
+    "id": "national-insurance-without-myna",
+    "category": "くらし",
+    "kind": "paraphrase",
+    "question": "山田町の国保に入っています。マイナ保険証がない場合、病院で何を使いますか？",
+    "expected_sources": [["md-national-health-insurance-card", "town-7795-1", "town-7795-2"]]
   }
 ]

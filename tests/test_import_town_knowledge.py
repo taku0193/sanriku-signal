@@ -110,6 +110,7 @@ class TownImportTests(unittest.TestCase):
     def test_alternate_town_template_uses_page_title_and_own_date(self):
         body = ArticleBody()
         body.feed("""<title>国保の手続き - 岩手県山田町ホームページ</title>
+            <a itemprop="item" href="/kurashi/">くらし</a>
             <aside><time datetime="2026-11-19">お知らせの日付</time></aside>
             <header class="released"><time datetime="2026-10-27">記事の日付</time></header>
             <article class="body"><h2>資格確認書</h2><p>町民課で受付</p>
@@ -117,6 +118,7 @@ class TownImportTests(unittest.TestCase):
             </article>""")
         self.assertTrue(body.page_title.startswith("国保の手続き"))
         self.assertEqual(body.date, "2026-10-27")
+        self.assertEqual(body.category, "くらし・手続き")
         self.assertEqual(list(passages(body.sections)), [("資格確認書", "町民課で受付\n申請書")])
         self.assertEqual(body.attachment_links, ["/fs/1/form.PDF"])
 
@@ -160,3 +162,10 @@ class TourismImportTests(unittest.TestCase):
             <form><div>入力欄</div></form><p>電話で相談</p>
             </div><p>ほかの企画</p>""")
         self.assertEqual(list(passages(plan.sections)), [("申込み", "希望日の7日前まで\n電話で相談")])
+
+    def test_photo_uses_the_site_caption_when_alt_text_is_empty(self):
+        body = ArticleBody(TOURISM_ARTICLE_SECTIONS["photorepo"])
+        body.feed("""<section id="photorepo_box"><h2>2018年6月18日公開</h2>
+            <h5>織笠</h5><img alt="">
+            </section><h5>関連資料</h5><img alt="別の写真">""")
+        self.assertEqual(list(passages(body.sections)), [("織笠", "写真の説明 織笠")])

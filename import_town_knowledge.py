@@ -52,7 +52,8 @@ TOURISM_ARTICLE_SECTIONS = {
     "photorepo": ("section", {"photorepo_box"}),
 }
 CATEGORIES = {
-    "kurashi": "くらし・手続き", "kanko": "観光", "jigyosha": "事業者向け", "chousei": "町政情報",
+    "kurashi": "くらし・手続き", "kanko": "観光", "jigyousya": "事業者向け", "chousei": "町政情報",
+    "fukkou-machidukuri": "復興まちづくり情報",
 }
 HEADINGS = {"h2", "h3", "h4", "h5", "h6"}
 BREAKS = {"br", "p", "li", "dt", "dd", "div", "tr", "caption"}
@@ -183,6 +184,9 @@ class ArticleBody(HTMLParser):
                 self.read_page_title = True
             if "released" in classes:
                 self.release_tag = tag
+            if tag == "a" and attrs.get("itemprop") == "item" and self.category == "町公式サイト":
+                if link := source_url(attrs.get("href") or "", ORIGIN):
+                    self.category = CATEGORIES.get(urlsplit(link).path.split("/")[1], self.category)
         if tag == "time" and not self.date and (self.release_tag or (self.tourism_section and self.body_depth)):
             self.date = attrs.get("datetime") or ""
         if self.ignore:
@@ -210,8 +214,11 @@ class ArticleBody(HTMLParser):
             self.flush()
             self.read_heading = tag
         elif tag == "img" and self.tourism_section == TOURISM_ARTICLE_SECTIONS["photorepo"]:
-            if alt := (attrs.get("alt") or "").strip():
-                self.buffer.append(f"写真の説明 {alt}")
+            caption = (attrs.get("alt") or "").strip()
+            if not caption and not self.heading.endswith("公開"):
+                caption = self.heading
+            if caption:
+                self.buffer.append(f"写真の説明 {caption}")
                 self.flush()
         elif tag in BREAKS and not self.read_heading:
             self.flush()
@@ -362,6 +369,8 @@ def main():
                 return None, f"別ページが正規URLを返しました。 {body.canonical}", False
             fallback = body.page_title.removesuffix("岩手県山田町ホームページ").strip().removesuffix("-")
             title = " ".join((body.title.strip() or fallback).split())
+            if path.startswith("/photorepo/") and re.fullmatch(r"[0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日公開", title):
+                body.date = datetime.strptime(title, "%Y年%m月%d日公開").date().isoformat()
             slug = path.strip("/").replace("/", "-") if tourism else ARTICLE.fullmatch(path)[1]
             records = [
                 {"id": f"{args.source}-{slug}-{index}", "title": title, "heading": heading, "text": text}
