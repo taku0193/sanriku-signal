@@ -324,7 +324,7 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
 }
 @keyframes scan-tide { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
 
-.museum-card {
+.answer-card {
   display: grid;
   gap: .75rem;
   padding: 1.05rem clamp(.9rem, 3vw, 1.3rem);
@@ -335,7 +335,9 @@ a { color: var(--teal-dark); text-underline-offset: .22em; }
   border-radius: 1rem;
   box-shadow: 0 .45rem 1.3rem #081f1a33;
 }
-.museum-card h3 { font-size: 1.19rem; font-weight: 780; line-height: 1.35; }
+.answer-card h3 { font-size: 1.19rem; font-weight: 780; line-height: 1.35; }
+.action-card .main-fact { padding: 0; }
+.action-card .main-fact dd { text-align: start; font-size: clamp(1.52rem, 5.3vw, 2.15rem); }
 .facility-facts { display: grid; margin-top: .1rem; }
 .facility-facts > div {
   display: flex;

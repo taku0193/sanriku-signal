@@ -239,7 +239,8 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     const readingPast = region && lastTurn && !bottomIsVisible() &&
       lastTurn.getBoundingClientRect().top > region.getBoundingClientRect().top;
     scrollAfterRender.current = readingPast ? "keep" : "bottom";
-    setTurns((current) => [...current, { id, question: query, stage: "planning", preview: "", result: null, failure: null }]);
+    setTurns((current) => [...current, { id, question: query, followUpQuestion: currentPending?.question,
+      stage: "planning", preview: "", result: null, failure: null }]);
     setDraft("");
     setFormError("");
     setBusy(true);

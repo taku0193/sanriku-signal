@@ -62,6 +62,7 @@ export type StreamEvent = ProgressEvent | { type: "result"; data: GuideResult };
 export interface Turn {
   id: number;
   question: string;
+  followUpQuestion?: string;
   stage: ProgressStage;
   searchDetail?: string;
   preview: string;

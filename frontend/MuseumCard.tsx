@@ -55,7 +55,7 @@ export function museumFacts(question: string, sources: Source[]): MuseumFacts | 
 
 export default function MuseumCard({ facts }: { facts: MuseumFacts }) {
   return (
-    <section className="museum-card" aria-label={facility + "の案内"}>
+    <section className="answer-card museum-card" aria-label={facility + "の案内"}>
       <h3>{facts.kind === "route" ? "科学館への行き方" : facility}</h3>
       {facts.kind === "route" ? (
         <dl className="route-steps">

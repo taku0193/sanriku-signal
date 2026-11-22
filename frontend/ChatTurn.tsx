@@ -1,5 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import AnswerText from "./AnswerText";
+import { actionFacts } from "./actionFacts";
+import GuideActionCard from "./GuideActionCard";
 import MuseumCard, { museumFacts } from "./MuseumCard";
 import type { ProgressStage, Turn } from "./types";
 
@@ -29,7 +31,10 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
   const result = turn.result;
   const { stage, searchDetail } = turn;
   const sources = result?.sources ?? [];
-  const facts = result?.action === "search" || result?.action === "answer" ? museumFacts(turn.question, sources) : undefined;
+  const nextAction = result?.action === "answer"
+    ? actionFacts([turn.followUpQuestion, turn.question].filter(Boolean).join("\n"), sources) : undefined;
+  const facts = !nextAction && (result?.action === "search" || result?.action === "answer") ? museumFacts(turn.question, sources) : undefined;
+  const hasCard = Boolean(nextAction || facts);
   const photos = result?.photos ?? [];
   const copyText = result?.mode === "ai" ? result.answer : result?.prompt ?? "";
   const [copyStatus, setCopyStatus] = useState("");
@@ -73,7 +78,8 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
             {result ? (
               <>
                 {result.notice && <p className="notice">{result.notice}</p>}
-                {facts ? <MuseumCard facts={facts} /> : result.answer ? <AnswerText text={result.answer} /> :
+                {nextAction ? <GuideActionCard facts={nextAction} /> : facts ? <MuseumCard facts={facts} /> :
+                  result.answer ? <AnswerText text={result.answer} /> :
                   result.mode === "search" && <p>質問に関連する資料が見つかりました。</p>}
               </>
             ) : turn.failure ? (
@@ -115,7 +121,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
           )}
 
           {sources.length > 0 && (
-            <details className="sources" open={result?.mode === "search" && !facts}>
+            <details className="sources" open={result?.mode === "search" && !hasCard}>
               <summary>出典 {sources.length} 件</summary>
               <div className="sources-list">
                 {sources.map((source, index) => {
@@ -137,7 +143,7 @@ export default function ChatTurn({ turn, onRestore }: ChatTurnProps) {
             </details>
           )}
 
-          {facts && result?.answer && (
+          {hasCard && result?.answer && (
             <details className="sources full-answer">
               <summary>回答の全文</summary>
               <div className="message-content full-answer-body"><AnswerText text={result.answer} /></div>

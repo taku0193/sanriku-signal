@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
+import { actionFacts } from "../frontend/actionFacts.js";
 import type { GuideResult, StreamEvent } from "../frontend/types.js";
 import { makeNameResolver } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
@@ -18,6 +19,22 @@ import { createGuideServer, readHistory, readPending } from "../server/web.js";
 const records = loadRecords();
 const keyword = makeRetriever(records, "keyword");
 const searchMuseum = { action: "search", target: "official_documents", query: "鯨と海の科学館 入館料", missing_fact: "科学館の入館料" };
+
+test("操作案内カードは質問に対応する資料と必要な根拠がそろった場合に表示できる", () => {
+  const certificate = records.find(({ id }) => id === "md-resident-card-mynumber-proxy")!;
+  const apply = "代理で証明書を受け取りたい。\n個人番号を載せた住民票です。";
+  assert.equal(actionFacts(apply, [certificate])?.main.value, "本人へ簡易書留");
+  assert.equal(actionFacts(apply, [{ ...certificate, text: "代理人が申請できます。" }]), undefined);
+  assert.equal(actionFacts("個人番号を載せた住民票の手数料は？", [certificate]), undefined);
+
+  const timetable = records.find(({ id }) => id === "md-yamada-local-fixed-bus")!;
+  const travel = "祝日にF03は運行していますか？通常の時刻も教えて。";
+  const times = actionFacts(travel, [timetable]);
+  assert.equal(times?.main.value, "運休");
+  assert.deepEqual(times?.details, [{ label: "山田駅前", value: "16:54 発" }, { label: "鯨科学館前", value: "17:08 着" }]);
+  assert.equal(actionFacts(travel, [{ ...timetable, text: timetable.text.replace("F03は土日祝", "F03は年末") }]), undefined);
+  assert.equal(actionFacts("祝日に別のバスで科学館に行くには？", [timetable]), undefined);
+});
 
 test("読みと1文字の誤字から、同じ公式資料を検索する", async () => {
   const cases = [
