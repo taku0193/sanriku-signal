@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { loadMode, requestAnswer } from "./api";
+import { createAnswerPreview } from "./answerPreview";
 import ChatTurn from "./ChatTurn";
 import CoastHero from "./CoastHero";
 import { searchOffline } from "./offline";
@@ -221,7 +222,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   async function send(query: string, fromExample = false) {
     if (active.current || !inChat) return;
     if (!query) {
-      setFormError(pending ? "地区名を入力してください。" : "質問を入力してください。");
+      setFormError(pending?.field === "district" ? "地区名を入力してください。" : pending ? "確認への返信を入力してください。" : "質問を入力してください。");
       questionField.current?.focus();
       return;
     }
@@ -243,12 +244,9 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     setFormError("");
     setBusy(true);
 
-    let partial = "";
-    let frame: number | undefined;
-    function cancelPreviewFrame() {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = undefined;
-    }
+    const preview = createAnswerPreview(controller.signal, reducedMotion, (text) => {
+      if (active.current === controller) updateTurn(id, { stage: "generating", preview: text });
+    });
 
     try {
       const result = offlineData
@@ -256,19 +254,15 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
         : await requestAnswer({ question: query, pending: currentPending, history }, controller.signal, (event) => {
           if (active.current !== controller || controller.signal.aborted) return;
           if (event.type === "progress") {
-            cancelPreviewFrame();
-            partial = "";
+            preview.reset();
             updateTurn(id, { stage: event.stage, searchDetail: event.detail, preview: "" });
           } else {
-            partial += event.text;
-            if (frame === undefined) {
-              frame = requestAnimationFrame(() => {
-                frame = undefined;
-                if (active.current === controller) updateTurn(id, { stage: "generating", preview: partial });
-              });
-            }
+            preview.append(event.text);
           }
         });
+      if (active.current !== controller) return;
+      if (result.mode === "ai" && result.action === "answer") await preview.complete(result.answer);
+      controller.signal.throwIfAborted();
       if (active.current !== controller) return;
       updateTurn(id, { result });
       setPending(result.pending ?? null);
@@ -284,9 +278,9 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
       let message = "サーバーに接続できませんでした。接続を確認して、もう一度お試しください。";
       if (stopped) message = "回答を途中で停止しました。";
       else if (error instanceof Error && !(error instanceof TypeError)) message = error.message;
-      updateTurn(id, { failure: { message, stopped, partial: stopped ? partial.trim() : "" } });
+      updateTurn(id, { failure: { message, stopped, partial: stopped ? preview.displayed().trim() : "" } });
     } finally {
-      cancelPreviewFrame();
+      preview.dispose();
       if (active.current === controller) {
         active.current = null;
         setBusy(false);
@@ -411,12 +405,12 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
               <form ref={composer} id="question-form" className="composer" onSubmit={submitQuestion}>
                 <label className="visually-hidden" htmlFor="question">山田町について質問する</label>
                 <div id="follow-up" className="follow-up" hidden={!pending}>
-                  <span>地区の確認に返信</span>
+                  <span>{pending?.field === "district" ? "地区の確認に返信" : "案内からの確認に返信"}</span>
                   <button id="skip-follow-up" className="quiet-button" type="button" disabled={busy} onClick={skipFollowUp}>別の質問へ</button>
                 </div>
                 <div className="input-row">
                   <textarea ref={questionField} id="question" name="question" rows={1} maxLength={400} required
-                    placeholder={pending ? "地区名や目印を入力する" : "山田町について質問する"}
+                    placeholder={pending?.field === "district" ? "地区名や目印を入力する" : pending ? "確認への返信を入力する" : "山田町について質問する"}
                     value={draft} onKeyDown={onQuestionKeyDown} onChange={(event) => {
                       setDraft(event.currentTarget.value);
                       setFormError("");

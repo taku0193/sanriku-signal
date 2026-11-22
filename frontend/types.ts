@@ -23,7 +23,7 @@ export interface Photo {
 
 export interface Pending {
   question: string;
-  field: "district";
+  field: "district" | "condition";
   prompt: string;
   district_hint?: string;
   resume_token?: string;
