@@ -2,7 +2,7 @@ import type { Pending, ProgressStage, QuestionAndAnswer } from "../frontend/type
 import { normalize } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import {
-  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, findCollectionDays, fiscalYear, todayInTokyo,
+  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, findCollectionDays, fiscalYear, namedWasteTypes, singleDistrictHint, todayInTokyo,
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
@@ -53,6 +53,11 @@ interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" 
   truncated?: true;
 }
 
+interface CollectionHints {
+  district?: string;
+  waste_types?: WasteType[];
+}
+
 interface TurnState {
   question: string;
   today: string;
@@ -64,6 +69,7 @@ interface TurnState {
   history?: QuestionAndAnswer[];
   prior_passages?: Passage[];
   follow_up?: { asked: string; reply: string };
+  collection_hints?: CollectionHints;
   remaining_searches?: number;
 }
 
@@ -185,8 +191,20 @@ function asksCollectionDate(text: string) {
   const query = normalize(text);
   if (/収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/.test(query)) return true;
   if (asksReservationDeadline(query)) return false;
-  return /ごみ|ぺっとぼとる|空き?びん|乾電池|ぷら|[段だん]ぼーる|缶|新聞|紙ぱっく|蛍光[管灯]|水銀/.test(query) &&
+  return (/ごみ|ぺっとぼとる|蛍光灯/.test(query) || namedWasteTypes(query).length > 0) &&
     /今日|明日|次回|次の|何日|何曜日|[0-9]+月|いつ(?!までに)/.test(query);
+}
+
+function collectionHints(wording: string[]): CollectionHints {
+  const district = singleDistrictHint(wording);
+  for (const phrase of wording) {
+    const types = namedWasteTypes(phrase);
+    if (types.length) return { district, waste_types: types };
+  }
+  // 「地区のごみ収集日」のように全区分を尋ねている場合にだけ空配列を指定する。
+  const allTypes = wording.some((phrase) =>
+    /(?:^|の|で)(?:次(?:の|回の))?ごみ(?:の?収集日|の日|はいつ)/.test(normalize(phrase)));
+  return { district, ...(allTypes ? { waste_types: [] } : {}) };
 }
 
 function compactText(text: string) {
@@ -210,7 +228,7 @@ function passageFor(record: SourceRecord, limit: number): Passage {
 }
 
 function configureSearch(event: SearchEvent, decision: Record<string, unknown>, today: string,
-                         wording: string[], retrieve: Retriever, strategies: SearchStrategy[], signal?: AbortSignal) {
+                         wording: string[], hints: CollectionHints | undefined, retrieve: Retriever, strategies: SearchStrategy[], signal?: AbortSignal) {
   if (event.target === "official_documents") {
     const query = trimString(decision.query);
     if (!query || [...query].length > 400) return;
@@ -223,8 +241,8 @@ function configureSearch(event: SearchEvent, decision: Record<string, unknown>, 
     };
   }
   if (event.target === "collection_calendars") {
-    const district = trimString(decision.district);
-    const types = Object.hasOwn(decision, "waste_types") ? decision.waste_types : [];
+    const district = hints?.district ?? trimString(decision.district);
+    const types = hints?.waste_types ?? decision.waste_types ?? [];
     if (!district || [...district].length > 80 || !Array.isArray(types) || !types.every(isWasteType)) return;
     let bounds: ReturnType<typeof collectionBounds>;
     try {
@@ -276,6 +294,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   if (pending) state.follow_up = { asked: pending.prompt, reply };
   const wording = pending ? [reply, pending.question] : [question];
   let calendarQuestion = asksCollectionDate(wording.join("\n"));
+  if (calendarQuestion) state.collection_hints = collectionHints(wording);
   const reservationOnly = !calendarQuestion && asksReservationDeadline(normalize(state.question));
 
   const evidence = new Map<string, SourceRecord>();
@@ -305,7 +324,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
-    const actions: Action[] = reservationOnly ? ["insufficient"] : ["clarify", "insufficient"];
+    const actions: Action[] = reservationOnly || state.collection_hints?.district
+      ? ["insufficient"] : ["clarify", "insufficient"];
     if (evidence.size) actions.push("answer");
     const remaining = Math.min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1);
     if (remaining) actions.push("search");
@@ -331,10 +351,13 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       const event: SearchEvent = { action, target: decision.target, status: "invalid", source_ids: [] };
       const missing = trimString(decision.missing_fact);
       if (missing) event.missing_fact = [...compactText(missing)].slice(0, 60).join("");
-      if (event.target === "collection_calendars") calendarQuestion = true;
+      if (event.target === "collection_calendars") {
+        calendarQuestion = true;
+        state.collection_hints ??= collectionHints(wording);
+      }
       const search = event.target === "source_details"
         ? configureDetailSearch(event, decision, state, readSource, evidence, exposedLengths)
-        : configureSearch(event, decision, today, wording, retrieve, state.search_strategies, signal);
+        : configureSearch(event, decision, today, wording, state.collection_hints, retrieve, state.search_strategies, signal);
       let found: LookupResult | undefined;
       if (search) {
         found = previous.get(search.key);

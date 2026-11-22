@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import test from "node:test";
 import type { AddressInfo } from "node:net";
 import type { GuideResult, StreamEvent } from "../frontend/types.js";
-import { AmbiguousDistrict, collectionBounds, findCollectionDays, todayInTokyo } from "../server/calendars.js";
+import { AmbiguousDistrict, collectionBounds, findCollectionDays, namedWasteTypes, singleDistrictHint, todayInTokyo } from "../server/calendars.js";
 import { makeRetriever } from "../server/embeddings.js";
 import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
@@ -128,6 +128,28 @@ test("日本時間と日程表を照合し、複数地区に当てはまる呼�
   const hit = findCollectionDays("大沢", december, ["plastic"], ["大沢の2026年12月のプラスチック収集日は？"])[0];
   assert.equal(hit.id, "calendar-2026-osawa");
   assert.match(hit.calendar_answer!, /2026年12月8日（火）.*2026年12月25日（金）/);
+});
+
+test("収集日の地区と品目は利用者の言い方から照合する", async () => {
+  assert.equal(singleDistrictHint(["北浜の資源ごみの収集日は？"]), undefined);
+  assert.equal(singleDistrictHint(["大沢３区の段ボールは2026年12月のいつ？"]), "大沢3区");
+  assert.deepEqual(namedWasteTypes("不燃ごみと雑誌"), ["non_burnable_glass_batteries", "paper_and_hazardous_items"]);
+  assert.deepEqual(namedWasteTypes("ペットボトルのキャップ"), ["plastic"]);
+  assert.deepEqual(namedWasteTypes("割れた蛍光管とペンキの缶"), ["non_burnable_glass_batteries"]);
+
+  const result = await runTurn("大沢で乾電池と雑誌は2026年12月のいつ出せますか？", async (state, actions) => {
+    assert.ok(!actions.includes("clarify"));
+    assert.deepEqual(state.collection_hints, {
+      district: "大沢", waste_types: ["non_burnable_glass_batteries", "paper_and_hazardous_items"],
+    });
+    if (!state.observations.length) return {
+      action: "search", target: "collection_calendars", district: "荒川", waste_types: ["burnable"],
+    };
+    return { action: "answer", sources: ["calendar-2026-osawa"] };
+  }, keyword, { today: "2026-11-22" });
+  assert.match(result.answer, /乾電池　2026年12月18日（金）/);
+  assert.match(result.answer, /水銀血圧計　2026年12月25日（金）/);
+  assert.doesNotMatch(result.answer, /・燃やせるごみ　/);
 });
 
 test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) => {

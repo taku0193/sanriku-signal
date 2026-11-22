@@ -1,3 +1,4 @@
+import { normalize } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { readJsonFile } from "./files.js";
 
@@ -12,6 +13,23 @@ export const COLLECTION_TYPES = {
 
 export const COLLECTION_PERIODS = ["next", "today", "tomorrow", "period", "fiscal_year"] as const;
 export type WasteType = keyof typeof COLLECTION_TYPES;
+
+const WASTE_NAMES: Record<WasteType, RegExp> = {
+  burnable: /燃やせる|燃える|(?<!不)可燃/,
+  non_burnable_glass_batteries: /燃やせない|燃えない|不燃|空き?(?:びん|瓶)|乾電池|ぼたん電池/,
+  pet_bottles_cans: /ぺっとぼとる|(?:空き?|飲料|あるみ|すちーる)缶|缶詰|(?<![紙油])缶(?:は|の|と|を|の日)/,
+  plastic: /ぷらすちっく|ぷら(?:ごみ|の|は|と|を)/,
+  paper_and_hazardous_items: /紙製容器包装|古紙|新聞|紙ぱっく|雑誌|(?:段|だん)ぼーる|蛍光[管灯]|水銀(?:体温|血圧)計/,
+  oversized: /粗大ごみ/,
+};
+
+export function namedWasteTypes(phrase: string): WasteType[] {
+  const text = normalize(phrase)
+    .replace(/ぺっとぼとるの(?:ふた|蓋|きゃっぷ|らべる)/g, "ぷらすちっく")
+    .replace(/(?:すぷれー|(?:塗料|ぺんき)の?|油)缶|(?:割れた|壊れた|破損した)蛍光[管灯]/g, "不燃")
+    .replace(/紙缶/g, "");
+  return (Object.keys(WASTE_NAMES) as WasteType[]).filter((kind) => WASTE_NAMES[kind].test(text));
+}
 
 interface Calendar extends SourceRecord {
   district: string;
@@ -71,10 +89,10 @@ function normalizeDistrict(text: string): string {
   );
 }
 
-function resolveDistrict(district: string, year: number, wording: string[]) {
+function districtIndex(year?: number) {
   const byName = new Map<string, Calendar[]>();
   for (const row of readJsonFile<Calendar[]>("collection_calendars.json")) {
-    if (row.fiscal_year !== year) continue;
+    if (year !== undefined && row.fiscal_year !== year) continue;
     for (const name of [row.district, ...(row.aliases ?? [])]) {
       const key = normalizeDistrict(name);
       const matches = byName.get(key) ?? [];
@@ -82,20 +100,39 @@ function resolveDistrict(district: string, year: number, wording: string[]) {
       byName.set(key, matches);
     }
   }
+  return byName;
+}
+
+function districtMentions(wording: string[], names: Iterable<string>) {
+  const keys = [...names].sort((a, b) => b.length - a.length);
+  for (const phrase of wording) {
+    const normalized = normalizeDistrict(phrase);
+    const mentioned: string[] = [];
+    for (const key of keys) {
+      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(escaped + "(?![0-9区])").test(normalized) &&
+          !mentioned.some((longer) => longer.includes(key))) mentioned.push(key);
+    }
+    if (mentioned.length) return mentioned;
+  }
+  return [];
+}
+
+export function singleDistrictHint(wording: string[]) {
+  const byName = districtIndex();
+  const mentioned = districtMentions(wording, byName.keys());
+  if (mentioned.length !== 1) return undefined;
+  const [name] = mentioned;
+  if (new Set(byName.get(name)!.map(({ district }) => district)).size === 1) return name;
+}
+
+function resolveDistrict(district: string, year: number, wording: string[]) {
+  const byName = districtIndex(year);
   let label = normalizeDistrict(district).trim().replace(/地区$/, "");
   let matches = byName.get(label) ?? [];
   if (wording.length) {
-    const keys = [...byName.keys()].sort((a, b) => b.length - a.length);
-    const mentioned: string[] = [];
-    for (const phrase of wording) {
-      for (const key of keys) {
-        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        if (new RegExp(escaped + "(?![0-9区])").test(normalizeDistrict(phrase)) &&
-            !mentioned.some((longer) => longer.includes(key))) mentioned.push(key);
-      }
-      if (mentioned.length) break;
-    }
-    const candidates = mentioned.filter((key) => byName.get(key)!.some((row) => matches.includes(row)));
+    const candidates = districtMentions(wording, byName.keys())
+      .filter((key) => byName.get(key)!.some((row) => matches.includes(row)));
     if (!candidates.length) return undefined;
     // 共通の呼び名から地区を一つに絞るには、利用者の返答が必要。
     label = candidates.includes(label) ? label : candidates[0];

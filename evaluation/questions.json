@@ -140,5 +140,170 @@
       "oversized-waste": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1",
       "waste-dropoff": "https://www.town.yamada.iwate.jp/docs/1272.html"
     }
+  },
+  {
+    "id": "osawa-nonburnable",
+    "category": "くらし",
+    "question": "大沢で次の不燃ごみはいつ出せる？",
+    "expected_answer": "大沢の2026年12月18日（金）。",
+    "required_patterns": [
+      "大沢",
+      "燃やせないごみ",
+      "12月18日[(]金[)]"
+    ],
+    "required_sources": {
+      "calendar-2026-osawa": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf"
+    },
+    "react": {
+      "as_of": "2026-11-22",
+      "first_action": "search"
+    }
+  },
+  {
+    "id": "osawa-batteries-newspaper",
+    "category": "くらし",
+    "question": "大沢の乾電池と新聞は2026年12月の何日に出せますか？",
+    "expected_answer": "乾電池は12月18日、新聞は12月25日。",
+    "required_patterns": [
+      "乾電池.{0,25}12月18日",
+      "新聞.{0,80}12月25日"
+    ],
+    "required_sources": {
+      "calendar-2026-osawa": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf"
+    },
+    "react": {
+      "as_of": "2026-11-22",
+      "first_action": "search"
+    }
+  },
+  {
+    "id": "osawa-magazines",
+    "category": "くらし",
+    "question": "大沢の雑誌は2026年12月のいつ出せますか？",
+    "expected_answer": "紙類の日の12月25日。",
+    "required_patterns": [
+      "雑誌.{0,80}12月25日"
+    ],
+    "required_sources": {
+      "calendar-2026-osawa": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf"
+    },
+    "react": {
+      "as_of": "2026-11-22",
+      "first_action": "search"
+    }
+  },
+  {
+    "id": "osawa-all-collection-categories",
+    "category": "くらし",
+    "question": "うちの地区のごみ収集日はいつですか？",
+    "expected_answer": "地区を聞き、大沢と返すと日程表の6区分を案内する。",
+    "required_patterns": [
+      "地区"
+    ],
+    "required_sources": {},
+    "react": {
+      "as_of": "2026-11-22",
+      "action": "clarify",
+      "first_action": "clarify",
+      "follow_up": {
+        "question": "大沢です。",
+        "required_patterns": [
+          "大沢",
+          "燃やせるごみ",
+          "乾電池",
+          "ペットボトル",
+          "プラスチック",
+          "新聞",
+          "粗大ごみ"
+        ],
+        "required_sources": {
+          "calendar-2026-osawa": "https://www.town.yamada.iwate.jp/fs/1/3/7/2/7/9/_/01_2026oosawa.pdf"
+        }
+      }
+    }
+  },
+  {
+    "id": "cans-sorting",
+    "category": "くらし",
+    "question": "山田町で空き缶はどう分別して出せばいいですか？",
+    "expected_answer": "食品・飲料の空き缶を洗って透明・半透明の袋へ。アルミとスチールは一緒。",
+    "required_patterns": [
+      "(?:すす|洗)",
+      "透明",
+      "袋",
+      "アルミ",
+      "スチール"
+    ],
+    "required_sources": {
+      "md-waste-cans-and-bottles": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
+    }
+  },
+  {
+    "id": "cardboard-sorting",
+    "category": "くらし",
+    "question": "山田町で古いダンボールを集積所に出す方法は？",
+    "expected_answer": "紙ひもで十字に結ぶ。",
+    "required_patterns": [
+      "紙ひも",
+      "十字"
+    ],
+    "required_sources": {
+      "md-waste-paper": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/2/_/bunbetu.pdf#page=4"
+    }
+  },
+  {
+    "id": "battery-sorting",
+    "category": "くらし",
+    "question": "モバイルバッテリーは山田町でどう捨てればいいですか？",
+    "expected_answer": "充電式電池は購入店に相談する。",
+    "required_patterns": [
+      "(?:購入店|販売店)",
+      "相談"
+    ],
+    "required_sources": {
+      "md-waste-batteries-and-lamps": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
+    }
+  },
+  {
+    "id": "bus-osawa",
+    "category": "交通",
+    "question": "大沢で車がなくて通院したいです。いぐバスは何曜日に乗れて大人はいくらですか？",
+    "expected_answer": "大沢の北線は月曜・木曜に運行し、中学生以上は200円。",
+    "required_patterns": [
+      "月曜",
+      "木曜",
+      "200\\s*円"
+    ],
+    "required_sources": {
+      "md-igu-bus": "https://www.town.yamada.iwate.jp/docs/10434.html"
+    }
+  },
+  {
+    "id": "convenience-resident-certificate",
+    "category": "くらし",
+    "question": "住民票をコンビニで取るのに、カードのほかに何が必要でいくら？",
+    "expected_answer": "4桁の暗証番号が必要で1通300円。",
+    "required_patterns": [
+      "4桁",
+      "暗証番号",
+      "300\\s*円"
+    ],
+    "required_sources": {
+      "md-resident-certificate-convenience": "https://www.town.yamada.iwate.jp/docs/6680.html"
+    }
+  },
+  {
+    "id": "earthquake-walking-guide",
+    "category": "観光",
+    "question": "山田町で震災の話を聞きながら街を歩くガイドはありますか？どこに問い合わせますか？",
+    "expected_answer": "地元の語り部が案内するまち歩き。山田町観光協会0193-65-7901に問い合わせる。",
+    "required_patterns": [
+      "語り部",
+      "山田町観光協会",
+      "0193-65-7901"
+    ],
+    "required_sources": {
+      "md-earthquake-walking-guide": "https://www.yamada-kankou.jp/plan/plan-1530/"
+    }
   }
 ]
