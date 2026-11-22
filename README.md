@@ -119,13 +119,16 @@ python3 yamada_rag.py --model --trace --baseline '岩手船越駅が最寄りの
 
 ## 4. 回答と出典をまとめて評価する
 
-Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらし・子育て・交通・防災などの57問で評価します。曖昧な質問への聞き返しとその続き、最新情報と通常案内を同時に尋ねる質問、対象外の質問も含みます。検索方式ごとに30問の上位3件を照合します。
+Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらし・子育て・交通・防災などの質問で評価します。曖昧な質問への聞き返しとその続き、最新情報と通常案内を同時に尋ねる質問、対象外の質問も含みます。標準評価では検索方式ごとの上位3件も照合します。
 
 ```bash
 npm run evaluate:server -- --output /tmp/sanriku-evaluation.json
+npm run evaluate:server -- --suite field --output /tmp/sanriku-field.json
 ```
 
 結果JSONには、ターンごとの回答・出典、Gemmaが選んだ検索先と検索方式、取得した資料ID、応答時間が入ります。駅から施設を特定する例だけ試すには `--case compare-by-station` を追加します。必要な語句・出典・行動の判定条件は [評価質問](evaluation/questions.json) にあります。検索上限、聞き返しの引き継ぎ、HTTPでのストリーミングは、Ollamaなしで `npm run test:server` を実行して確認できます。
+
+`field` は文化・地域行事、交通、住民手続きを各10問ずつ含む評価です。まず質問と期待する事実・出典を記録し、修正前の回答を保存します。検索ログの資料IDを確認すると、出典の収録、検索順位、回答に使った根拠のどこを直すべきか分かります。 [現地の質問を想定した30問](evaluation/field-questions.json)
 
 初回検索のみ・旧版の追加検索・Python版のReActを比較するには `python3 -B evaluate_rag.py` を使います。Python版のReActを実行するときは `--mode react` を指定します。
 
@@ -172,3 +175,26 @@ PDFから基本資料を作るときは、発行元の一覧で版や対象年�
 日付データを照合し直すには、公式PDFを資料IDと同じ名前で保存し、`pdftotext` が使える環境で `python3 -B import_calendar_days.py --pdf-dir <PDFのフォルダ>` を実行します。各月の欄と燃やせるごみの曜日が公式表と一致した場合に、日付JSONを更新します。
 
 ごみ収集日の回答は登録した年度の日程表に基づきます。12月29日〜31日が該当する場合は日程表の変更注意も表示します。臨時の営業変更、当日の運行やイベントの変更は各発信元が案内します。 [山田町の地区別ごみ収集日程表](https://www.town.yamada.iwate.jp/docs/8354.html)
+
+## 年度・改正日・開催日がある資料を更新する
+
+| 資料 | 確認するタイミングと更新先 |
+| --- | --- |
+| 地区別ごみ収集日程 | 4月の年度切り替えの45日前から点検します。町が新年度版を公開したら、地区名・地区の別名・PDFと日付JSONを年度ごとに追加し、年始と年度境界の回答を確認します。 [町の日程表](https://www.town.yamada.iwate.jp/docs/8354.html) |
+| バスの時刻・運行ルール | 30日ごととダイヤ改正の発表時に、改正日、平日と休日、年末年始などの注記を照合します。要約、確認日、対象期間、出典のPDFを更新します。 [岩手県北バスの宮古・山田エリア](https://www.iwate-kenpokubus.co.jp/regular/map/miyako/) · [町のいぐバス案内](https://www.town.yamada.iwate.jp/docs/10434.html) |
+| イベント・季節営業 | 開催年の公式発表時と、延期・中止の発表時に、日付、会場、案内本文、出典を見直します。日程が確定したら、その年の資料IDと対象期間を登録します。 [町のイベント情報](https://www.town.yamada.iwate.jp/kurashi/event/) · [山田祭り公式案内](https://yamada-matsuri.com/) |
+
+`source-periods.json` の `from` と `through` は、資料が示す日程や制度の開始日と終了日です。終了日が未公表の時刻表は `from` を登録し、本文を確認した日から30日後を点検日とします。公式ページが同じURLで翌年分に更新される場合は、`snapshots` の掲載日と対象期間を照合します。終了したイベント資料は、当時の質問に答えるために保管します。地区別の期間は日程表の `fiscal_year` から求めます。新年度のPDFは列、曜日、注記を改めて照合してください。入稿済みの令和8年度を照合する `import_calendar_days.py` は、同年度の表に合わせた検証コードです。
+
+更新後は必要に応じて記事を取得し直し、次を実行して索引を更新します。監査結果の `periods` に再確認が必要な資料と日程表が未収録の年度が出ます。
+
+```bash
+python3 -B -m yamada_embeddings
+python3 -B audit_knowledge.py --embeddings
+python3 -B audit_knowledge.py --as-of 2027-03-15
+npm run evaluate:server -- --suite field --output /tmp/sanriku-field.json
+```
+
+サーバーを再起動し、変更した資料を使う質問を試します。たとえば山田祭りの日程は2026年の実績と翌年の確定日を尋ね、新しい日程を確認できる根拠があるかを点検します。
+
+当日の遅延・運休は事業者の発表とその発表時刻を確認します。バスの到着見込みはバスロケの対象路線・停留所・更新時刻を照合します。混雑や空席は主催者・施設の当日の公表情報が揃う場合に案内します。時刻表や通常料金は資料で回答でき、当日の状況を確認できないときはその旨を伝えます。 [三陸鉄道の運行情報](https://www.sanrikutetsudou.com/category/unkou/) · [岩手県北バスの運行のお知らせ](https://www.iwate-kenpokubus.co.jp/regular/) · [岩手県北バスのバスロケ](https://www.iwate-kenpokubus.co.jp/archives/19967/)

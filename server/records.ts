@@ -3,6 +3,7 @@ import { hasNamedMatch, normalize, rankCurated, SEARCH_LIMIT } from "../shared/k
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import { projectRoot, readJsonFile, readTextFile } from "./files.js";
+import { withSourcePeriods } from "./periods.js";
 
 export const NO_EVIDENCE = "登録した資料からは、質問に答えるための根拠を確認できませんでした。";
 export const ANSWER_INSTRUCTIONS = readTextFile("prompts/answer.md").trimEnd();
@@ -66,7 +67,7 @@ export function loadRecords(): SourceRecord[] {
     }
   }
   if (new Set(records.map((record) => record.id)).size !== records.length) throw new Error("資料IDが重複しています。");
-  return records;
+  return withSourcePeriods(records);
 }
 
 export function lexicalText(text: string): string {

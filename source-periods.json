@@ -1,0 +1,13 @@
+{
+  "records": {
+    "md-yamada-festival-2026": { "from": "2026-09-19", "through": "2026-09-21" },
+    "md-yamada-local-fixed-bus": { "from": "2026-10-01" },
+    "md-igu-bus": { "from": "2026-10-01" },
+    "md-yamada-beaches-2026": { "from": "2026-07-18", "through": "2026-08-16" },
+    "md-orandajima-kayak-school-2026": { "from": "2026-05-01", "through": "2026-10-31" },
+    "md-oyster-hut-season-2026-27": { "from": "2026-10-31", "through": "2027-05-30" }
+  },
+  "snapshots": [
+    { "url": "https://www.town.yamada.iwate.jp/docs/1657.html", "published": "2026-09-07", "record_id": "md-yamada-festival-2026" }
+  ]
+}

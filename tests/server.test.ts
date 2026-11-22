@@ -10,6 +10,7 @@ import { AmbiguousDistrict, collectionBounds, findCollectionDays, namedWasteType
 import { makeRetriever } from "../server/embeddings.js";
 import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
+import { withSourcePeriods } from "../server/periods.js";
 import { makeDecider, runTurn, streamGroundedAnswer } from "../server/react.js";
 import { loadRecords, makeSourceReader, NO_EVIDENCE } from "../server/records.js";
 import { createGuideServer, readHistory, readPending } from "../server/web.js";
@@ -107,6 +108,50 @@ test("通常料金に出典を付け、当日の混雑を確認できる範囲�
   }, keyword, { onDelta: () => assert.fail("確認前の回答を配信した") });
   assert.match(result.answer, /300円.*混雑や待ち時間.*確認できません/s);
   assert.equal(result.sources[0].id, "museum-fees");
+});
+
+test("前年の祭りの案内を翌年の日程として引用しない", async () => {
+  const saved = records.find(({ id }) => id === "md-yamada-festival-2026")!;
+  assert.deepEqual(saved.period, { from: "2026-09-19", through: "2026-09-21" });
+  const snapshot = { ...saved, period: undefined, id: "town-1657-3" };
+  const [fromImportedVersion, newVersion] = withSourcePeriods([
+    { ...snapshot, published: "2026-09-07" }, { ...snapshot, published: "2027-09-01" },
+  ]);
+  assert.deepEqual(fromImportedVersion.period, saved.period);
+  assert.equal(newVersion.period, undefined);
+  const search = { action: "search", target: "official_documents", query: "大杉神社 宵宮の日程" };
+  const today = "2026-11-22";
+  for (const [label, year, upcoming, answer] of [
+    ["2026年の", 2026, false, true], ["2027年の", 2027, false, false],
+    ["前回の", undefined, false, true], ["次の", undefined, true, false],
+  ] as const) {
+    const result = await runTurn(
+      `${label}山田祭りの大杉神社の宵宮祭は何日？`, async (state, actions) => {
+        assert.equal(state.requested_event_year, year);
+        assert.equal(state.requested_event_after, upcoming ? today : undefined);
+        if (!state.observations.length) return search;
+        assert.equal(actions.includes("answer"), answer);
+        return { action: "answer", answer: "9月20日です。", sources: [fromImportedVersion.id] };
+      }, async () => ({ records: [fromImportedVersion], mode: "hybrid" }), { today },
+    );
+    assert.equal(result.action, answer ? "answer" : "insufficient");
+    assert.equal(result.sources.length, answer ? 1 : 0);
+  }
+});
+
+test("証明書の種類を聞き返し、個人番号記載の住民票は受取方法の資料を探す", async () => {
+  const initial = await runTurn("委任状で証明書を友人が受け取れますか？",
+    async () => assert.fail("証明書の種類を確認する"), keyword);
+  assert.equal(initial.pending?.field, "condition");
+  assert.match(initial.answer, /どの証明書/);
+  const followed = await runTurn("個人番号を載せた住民票です。", async (state) => {
+    assert.equal(state.follow_up?.reply, "個人番号を載せた住民票です。");
+    return state.observations.length
+      ? { action: "answer", answer: "本人に簡易書留で送られます。", sources: ["md-resident-card-mynumber-proxy"] }
+      : { action: "search", target: "official_documents", query: "住民票 個人番号 委任状 受取" };
+  }, keyword, { pending: initial.pending });
+  assert.equal(followed.action, "answer");
+  assert.match(followed.answer, /簡易書留/);
 });
 
 test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", async () => {

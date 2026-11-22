@@ -10,6 +10,7 @@ import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
 import { isObject, readTextFile } from "./files.js";
 import { chatJson, OllamaError } from "./ollama.js";
+import { asksForUpcomingEvent, documentsEventYear, documentsUpcomingEvent, requestedEventYear } from "./periods.js";
 import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
 import type { SourceReader } from "./records.js";
 
@@ -62,7 +63,7 @@ interface SearchEvent {
   source_id?: string;
 }
 
-interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" | "checked" | "published"> {
+interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" | "checked" | "published" | "period"> {
   truncated?: true;
 }
 
@@ -75,6 +76,8 @@ interface TurnState {
   question: string;
   today: string;
   current_fiscal_year: number;
+  requested_event_year?: number;
+  requested_event_after?: string;
   observations: (SearchEvent & { passages: Passage[] })[];
   search_strategies: SearchStrategy[];
   expandable_source_ids?: string[];
@@ -216,6 +219,8 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(state.search_wording ? [SEARCH_WORDING_INSTRUCTIONS] : []),
       ...(state.quoted_subject ? ["quoted_subject は質問された固有名です。この名称や確認済みの別名が出る資料を探します。異なる名称の資料から創刊日、公開年、料金などを転用しません。"] : []),
       ...(state.resolved_name ? ["resolved_name は資料検索に使った正式表記です。資料で同じ対象を確認できたら、回答の最初に正式表記を書きます。"] : []),
+      ...(state.requested_event_year ? ["requested_event_year は利用者が尋ねた開催年です。例年の時期や別の年の予定から開催日を決めず、指定年の資料で会場や日付を確認します。period は資料の対象期間です。"] : []),
+      ...(state.requested_event_after ? ["requested_event_after は次回の開催を確認する基準日です。対象の行事がその日以降に開かれることを資料で確認します。過去の開催日や例年の時期を次回の日程として使いません。"] : []),
       ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。回答本文には通常時の情報だけを書きます。当日・将来の状況が確認できない旨はアプリが追記します。"] : []),
       ...(state.round_trip_counts ? ["round_trip_counts は利用者が示した往復回数を片道回数に換算した結果です。資料の上限が片道単位なら換算後の回数に、追加分を足して上限と比べます。"] : []),
       ...(applyThreshold ? ["資料の人数や年齢の境目に利用者の条件を当てはめ、適用される区分を資料の表記で伝えます。団体料金の人数に満たない場合は、資料にあれば1人あたりの通常料金も金額で示します。代替の制度は、その利用条件まで確認できる資料があるときに案内します。"] : []),
@@ -331,9 +336,9 @@ function isWasteType(value: unknown): value is WasteType {
 type LookupResult = { records: SourceRecord[]; mode?: RetrievalResult["mode"] };
 
 function passageFor(record: SourceRecord, limit: number): Passage {
-  const { id, title, text, source, checked, published } = record;
+  const { id, title, text, source, checked, published, period } = record;
   const excerpt = text.slice(0, limit).replace(/[\uD800-\uDBFF]$/, "");
-  return { id, title, text: excerpt, source, checked, published, ...(excerpt.length < text.length ? { truncated: true } : {}) };
+  return { id, title, text: excerpt, source, checked, published, period, ...(excerpt.length < text.length ? { truncated: true } : {}) };
 }
 
 function configureSearch(event: SearchEvent, decision: Record<string, unknown>, today: string,
@@ -418,12 +423,18 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   const wording = pending ? [searchReply, searchQuestion] : [searchQuestion];
   const queryText = wording.join("\n");
   let calendarQuestion = pending?.field === "district" || asksCollectionDate(queryText);
+  const eventYear = !calendarQuestion ? requestedEventYear(queryText, today) : undefined;
+  state.requested_event_year = eventYear;
+  const eventAfter = !calendarQuestion && (!eventYear || eventYear >= Number(today.slice(0, 4))) &&
+    asksForUpcomingEvent(queryText) ? today : undefined;
+  state.requested_event_after = eventAfter;
   const repeatedQuestion = !pending && history?.some((turn) => normalize(turn.question) === normalize(question));
   if (!calendarQuestion && (WASTE_PROCEDURE.test(normalize(queryText)) || COLLECTION_DATE.test(normalize(queryText)))) {
     state.collection_excluded = true;
   }
   const subject = calendarQuestion ? undefined : quotedSubject(state.question) ?? (pending ? quotedSubject(reply) : undefined);
   const canonical = subject && (resolveName?.(subject) ?? resolveName?.(normalizeQuery(subject)));
+  const requiresSubjectEvidence = Boolean(subject || eventYear || eventAfter);
   state.quoted_subject = subject;
   state.resolved_name = namedSubject;
   const mixedQuestion = referenceQuestion(queryText);
@@ -439,6 +450,12 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const excerpt = record.text.slice(0, exposedLengths.get(record.id) ?? EXCERPT_LIMIT);
     return [record.title, ...(record.names ?? []), excerpt].some((text) =>
       mentionsSubject(text, subject) || Boolean(canonical && mentionsSubject(text, canonical)));
+  }
+
+  function supportsRequestedSubject(record: SourceRecord) {
+    const length = exposedLengths.get(record.id) ?? EXCERPT_LIMIT;
+    return matchesSubject(record) && (!eventYear || documentsEventYear(record, eventYear, length)) &&
+      (!eventAfter || documentsUpcomingEvent(record, eventAfter, length));
   }
 
   const evidence = new Map<string, SourceRecord>();
@@ -459,6 +476,13 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       pending: { question: state.question, field, prompt, ...(districtHint ? { district_hint: districtHint } : {}) },
       ...(prior.length ? { checkpoint: prior } : {}),
     };
+  }
+
+  const certificateQuestion = normalize(searchQuestion);
+  if (!pending && !history?.length && /証明書/.test(certificateQuestion) && /代理|委任状|代わり/.test(certificateQuestion) &&
+      /受け取|受取|交付|請求/.test(certificateQuestion) && !/戸籍|住民票|印鑑|所得|課税|納税|税証明|資産|身分証明|転出証明/.test(certificateQuestion)) {
+    onAction?.({ action: "clarify" });
+    return clarify("どの証明書を受け取る予定ですか？ 住民票の写しや戸籍、税証明など、種類を教えてください。", "condition");
   }
 
   if (calendarQuestion) {
@@ -491,10 +515,10 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
-    const subjectObserved = !subject || [...evidence.values()].some(matchesSubject);
+    const subjectObserved = !requiresSubjectEvidence || [...evidence.values()].some(supportsRequestedSubject);
     const canClarifyDistrict = calendarQuestion && !state.collection_hints?.district;
     const canClarifyCondition = !calendarQuestion && !pending && subjectObserved;
-    const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject || subject || state.reference_question);
+    const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject || requiresSubjectEvidence || state.reference_question);
     const actions: Action[] = needsSearch ? [] : ["insufficient"];
     if (!needsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
     if (evidence.size && subjectObserved) actions.push("answer");
@@ -514,7 +538,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       : undefined;
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
     const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion
-      ? streamGroundedAnswer(evidence, onDelta, subject ? matchesSubject : undefined) : undefined;
+      ? streamGroundedAnswer(evidence, onDelta, requiresSubjectEvidence ? supportsRequestedSubject : undefined) : undefined;
     const decision = await decide(referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
       : state, actions, signal, stream);
@@ -552,7 +576,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
           searches++;
           try {
             const result = await search.lookup();
-            found = { ...result, records: result.records.map((record) =>
+            found = { ...result, records: result.records.filter((record) =>
+              !record.period?.through || ((!eventYear || documentsEventYear(record, eventYear, EXCERPT_LIMIT)) &&
+                (!eventAfter || documentsUpcomingEvent(record, eventAfter, EXCERPT_LIMIT)))).map((record) =>
               record.calendar_answer && evidence.has(record.id) && evidence.get(record.id)!.text !== record.text
                 ? { ...record, id: `${record.id}-lookup-${searches}` } : record
             ) };
@@ -614,7 +640,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         if (additional && dates.length < sources.length) dates.push(additional);
         return { action, answer: dates.join("\n\n"), sources, pending: null };
       }
-      if (answer && !calendarQuestion && sources.some(matchesSubject)) {
+      if (answer && !calendarQuestion && sources.some(supportsRequestedSubject)) {
         return { action, answer: mixedQuestion ? `${answer}\n\n${mixedQuestion.notice}` : answer, sources, pending: null };
       }
     }

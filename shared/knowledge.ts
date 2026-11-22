@@ -1,5 +1,10 @@
 import type { Source } from "../frontend/types.js";
 
+export interface SourcePeriod {
+  from: string;
+  through?: string;
+}
+
 export interface SourceRecord extends Source {
   id: string;
   category: string;
@@ -9,6 +14,7 @@ export interface SourceRecord extends Source {
   keywords?: string[];
   topics?: string[];
   names?: string[];
+  period?: SourcePeriod;
   heading?: string;
   calendar_answer?: string;
 }

@@ -3,7 +3,7 @@
 import argparse
 import json
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
@@ -61,12 +61,56 @@ def audit_calendars(issues):
             dates = [date.fromisoformat(value) for value in row["dates"]]
             if not dates or sorted(set(dates)) != dates or dates[0] < start or dates[-1] > end:
                 issues.append(f"{key} の {row['key']} の収集日を確認してください。")
-    return {"tables": len(calendars), "rows": sum(len(calendar["rows"]) for calendar in days.values())}
+    years = sorted({calendar["fiscal_year"] for calendar in calendars})
+    return {"tables": len(calendars), "rows": sum(len(calendar["rows"]) for calendar in days.values()),
+            "fiscal_years": years}
+
+
+def audit_periods(records, fiscal_years, as_of, issues):
+    registry = read_json("source-periods.json")
+    by_id = {record["id"]: record for record in records}
+    monitored = []
+    for key, period in registry["records"].items():
+        start = date.fromisoformat(period["from"])
+        end = date.fromisoformat(period["through"]) if "through" in period else None
+        record = by_id.get(key)
+        if not record or (end and end < start):
+            issues.append(f"{key} の対象期間と資料IDを確認してください。")
+            continue
+        review = end or date.fromisoformat(record["checked"]) + timedelta(days=30)
+        status = "monitored"
+        if end and end < as_of:
+            status = "archived"
+        elif review <= (as_of + timedelta(days=30) if end else as_of):
+            status = "check_source"
+        monitored.append({"id": key, **period, "review_by": review.isoformat(), "status": status})
+
+    snapshot_keys = {(entry["url"], entry["published"]) for entry in registry["snapshots"]}
+    known_snapshots = {(record["url"], record.get("published")) for record in records}
+    if len(snapshot_keys) != len(registry["snapshots"]):
+        issues.append("同じURLと掲載日の対象期間が重複しています。")
+    for entry in registry["snapshots"]:
+        date.fromisoformat(entry["published"])
+        record = by_id.get(entry["record_id"])
+        if entry["record_id"] not in registry["records"] or not record or record["url"] != entry["url"]:
+            issues.append(f"{entry['url']} の対象期間を参照する資料IDを確認してください。")
+
+    fiscal_year = as_of.year - (as_of.month < 4)
+    next_year = fiscal_year + 1
+    rollover = date(next_year, 4, 1) - as_of <= timedelta(days=45)
+    return {
+        "as_of": as_of.isoformat(),
+        "sources": monitored,
+        "replaced_or_unavailable_snapshots": sorted(snapshot_keys - known_snapshots),
+        "missing_collection_years": [year for year in (fiscal_year, next_year) if year not in fiscal_years
+                                     and (year == fiscal_year or rollover)],
+    }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--embeddings", action="store_true", help="各資料の本文と埋め込み索引を照合します。")
+    parser.add_argument("--as-of", type=date.fromisoformat, help="対象期間の点検基準日（YYYY-MM-DD）。省略時は日本時間の今日です。")
     args = parser.parse_args()
     issues = []
     try:
@@ -110,6 +154,7 @@ def main():
             "invalid_dates": invalid_dates,
             "imports": imports,
             "calendars": calendars,
+            "periods": audit_periods(records, calendars["fiscal_years"], args.as_of or today, issues),
             "photo_references": len(photos),
         }
         if args.embeddings:

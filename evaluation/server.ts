@@ -14,6 +14,7 @@ interface Expectations {
   forbidden_patterns?: string[];
   required_sources: Record<string, string>;
   one_of_sources?: Record<string, string>;
+  source_urls?: string[][];
   action?: string;
   first_action?: string;
 }
@@ -30,9 +31,11 @@ interface RetrievalCase {
 }
 
 const { values } = parseArgs({
-  options: { model: { type: "string", default: DEFAULT_MODEL }, case: { type: "string" }, output: { type: "string" } },
+  options: { model: { type: "string", default: DEFAULT_MODEL }, case: { type: "string" },
+    output: { type: "string" }, suite: { type: "string", default: "standard" } },
 });
-const questions = readJsonFile<AnswerCase[]>("evaluation/questions.json")
+if (values.suite !== "standard" && values.suite !== "field") throw new Error("評価セットは standard または field を指定してください。");
+const questions = readJsonFile<AnswerCase[]>(values.suite === "field" ? "evaluation/field-questions.json" : "evaluation/questions.json")
   .filter(({ id }) => !values.case || id === values.case);
 if (!questions.length) throw new Error(`評価質問が見つかりません。${values.case}`);
 
@@ -71,14 +74,19 @@ async function evaluateAnswer(item: AnswerCase) {
     const chunks: string[] = [];
     let firstAction: string | undefined;
     const started = performance.now();
-    previous = await runTurn(turn.question, decide, retrieve, {
-      pending: previous?.pending, checkpoint: previous?.checkpoint, today: expected.as_of, readSource, resolveName,
-      onAction: (event) => {
-        firstAction ??= event.action;
-        actions.push(event);
-      },
-      onDelta: (text) => chunks.push(text),
-    });
+    try {
+      previous = await runTurn(turn.question, decide, retrieve, {
+        pending: previous?.pending, checkpoint: previous?.checkpoint, today: expected.as_of, readSource, resolveName,
+        onAction: (event) => {
+          firstAction ??= event.action;
+          actions.push(event);
+        },
+        onDelta: (text) => chunks.push(text),
+      });
+    } catch (error) {
+      turns.push({ question: turn.question, error: String(error), actions, passed: false, millis: performance.now() - started });
+      break;
+    }
     const answer = previous.answer.normalize("NFKC").trim().replace(/\s+/g, " ");
     const sources = previous.sources.map(({ id, url }) => ({ id, url }));
     const missingPatterns = turn.required_patterns.filter((pattern) => !new RegExp(pattern, "u").test(answer));
@@ -88,14 +96,16 @@ async function evaluateAnswer(item: AnswerCase) {
     const cited = ([id, url]: [string, string]) => sources.some((hit) => hit.id === id && hit.url === url);
     const missingSources = expectedSources.filter((source) => !cited(source));
     if (equivalentSources.length && !equivalentSources.some(cited)) missingSources.push(...equivalentSources);
-    const expectsSource = expectedSources.length > 0 || equivalentSources.length > 0;
+    const missingSourceUrls = (turn.source_urls ?? []).filter((alternatives) =>
+      !alternatives.some((url) => sources.some((hit) => hit.url && hit.url.split("#")[0] === url.split("#")[0])));
+    const expectsSource = expectedSources.length > 0 || equivalentSources.length > 0 || Boolean(turn.source_urls?.length);
     const expectedAction = turn.action ?? (expectsSource ? "answer" : "insufficient");
     const passed = previous.action === expectedAction && (!turn.first_action || firstAction === turn.first_action) &&
-      !missingPatterns.length && !forbidden.length && !missingSources.length && (expectsSource || !sources.length) &&
+      !missingPatterns.length && !forbidden.length && !missingSources.length && !missingSourceUrls.length && (expectsSource || !sources.length) &&
       (!chunks.length || chunks.join("").trimEnd() === previous.answer);
     turns.push({
       question: turn.question, action: previous.action, expectedAction, firstAction, answer: previous.answer,
-      sources, actions, missingPatterns, forbidden, missingSources, passed, millis: performance.now() - started,
+      sources, actions, missingPatterns, forbidden, missingSources, missingSourceUrls, passed, millis: performance.now() - started,
     });
   }
   const passed = (!expected.follow_up || turns.length === 2) && turns.every((turn) => turn.passed);
@@ -103,7 +113,7 @@ async function evaluateAnswer(item: AnswerCase) {
   return { id: item.id, passed, turns };
 }
 
-const retrieval = values.case ? [] : await evaluateRetrieval();
+const retrieval = values.case || values.suite === "field" ? [] : await evaluateRetrieval();
 const answers = [];
 for (const question of questions) answers.push(await evaluateAnswer(question));
 const passed = answers.filter((row) => row.passed).length;

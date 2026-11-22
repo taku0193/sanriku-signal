@@ -1,0 +1,561 @@
+[
+  {
+    "id": "culture-01",
+    "category": "文化・地域行事",
+    "question": "おおうらのかろがたけ神社のお祭りで、三役って何の芸能が入るの？",
+    "required_patterns": [
+      "大浦虎舞",
+      "大浦大神楽",
+      "(?:大浦)?さんさ踊"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://mukei311.tobunken.go.jp/fbox.php?eid=10166&s=o&s=o%2Ffbox.php%3Feid%3D10166"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-02",
+    "category": "文化・地域行事",
+    "question": "大浦さんさ踊りはどこから伝わったんですか。伝わった年も知りたい。",
+    "required_patterns": [
+      "荒川",
+      "1925年|大正14年"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://mukei311.tobunken.go.jp/fbox.php?eid=10166&s=o&s=o%2Ffbox.php%3Feid%3D10166"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-03",
+    "category": "文化・地域行事",
+    "question": "山田のしんこう行事は国と県どちらの無形民俗文化財ですか。いつ指定？",
+    "required_patterns": [
+      "県指定|岩手県.{0,15}指定",
+      "(?:2024年|令和6年)(?:[（(](?:2024年|令和6年)[）)])?の?4月9日"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/7164.html",
+        "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=6",
+        "https://www.pref.iwate.jp/_res/projects/default_project/_page_/001/078/225/r6.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-04",
+    "category": "文化・地域行事",
+    "question": "神輿を船に移して山田湾を回るのは、山田八幡宮と大杉神社のどっちの行事？",
+    "required_patterns": [
+      "大杉神社",
+      "海上渡御|山田湾"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.pref.iwate.jp/_res/projects/default_project/_page_/001/073/502/0321siryou.pdf",
+        "https://www.town.yamada.iwate.jp/fs/2/3/1/0/_/kirokusi_4.5.pdf",
+        "https://yamada-matsuri.com/",
+        "https://cuckoo.si.soft.iwate-pu.ac.jp/~yamada_prj/index.php?page=bunkazai_detail&id=6"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-05",
+    "category": "文化・地域行事",
+    "question": "震災記録誌にある関口剣舞は、山田祭りでどこの神輿に付いて回った？",
+    "required_patterns": [
+      "大杉神社"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/fs/2/3/1/0/_/kirokusi_4.5.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-06",
+    "category": "文化・地域行事",
+    "question": "2026年の山田のお祭り、八幡宮と大杉神社で前夜祭はそれぞれ何日何時だった？",
+    "required_patterns": [
+      "9月19日",
+      "9月20日",
+      "17[:：]30|17時30分|午後5時30分|午後5時半"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/1657.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-07",
+    "category": "文化・地域行事",
+    "question": "2026年9月21日の山田祭りの出店、会場はどこで何時までだった？",
+    "required_patterns": [
+      "中央公園",
+      "20[:：]00|20時|午後8時"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/1657.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-08",
+    "category": "文化・地域行事",
+    "question": "2027年の山田祭りで、大杉神社の宵宮は9月何日に確定しましたか。その年の発表だけを知りたい。",
+    "required_patterns": [
+      "確認でき|根拠|見つか|わかりません|分かりません"
+    ],
+    "required_sources": {},
+    "action": "insufficient",
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-09",
+    "category": "文化・地域行事",
+    "question": "大釜熊野山神社の懸仏って、町の指定文化財では何の分類？",
+    "required_patterns": [
+      "工芸品"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/7164.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "culture-10",
+    "category": "文化・地域行事",
+    "question": "大浦さんさの『通り踊』は、境内と神輿行列のどちらで踊りますか？",
+    "required_patterns": [
+      "神輿.{0,8}行列|神輿渡御"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://mukei311.tobunken.go.jp/fbox.php?eid=10166&s=o&s=o%2Ffbox.php%3Feid%3D10166"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-01",
+    "category": "交通",
+    "question": "大沢のいぐバスは月曜が祝日でも乗れますか。通常の運行ルールでお願いします。",
+    "required_patterns": [
+      "北線",
+      "祝日.{0,22}(?:運休|運行しません|運行されません|お休み)"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/10434.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-02",
+    "category": "交通",
+    "question": "日曜日に陸中山田駅のあたりでいぐバスを使うなら、その日に電話予約は受けてもらえる？アプリは？",
+    "required_patterns": [
+      "まちなか線|市街地",
+      "平日|日曜.{0,30}(?:受け付|利用|予約).{0,10}で?きません",
+      "アプリ.{0,25}24時間"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/10434.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-03",
+    "category": "交通",
+    "question": "いぐバス山田に中学生がのりノリパスポートを提示して乗ると何円？交通系ICでも払える？",
+    "required_patterns": [
+      "100円",
+      "ICカード"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/10434.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-04",
+    "category": "交通",
+    "question": "時刻表のF03で年末の12月30日に山田駅前から鯨科学館前へ行ける？通常は山田駅前を何時発？",
+    "required_patterns": [
+      "運休|運行されません|利用できません",
+      "16[:：]54|午後4時54分"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.iwate-kenpokubus.co.jp/wp/wp-content/uploads/20261001%E5%B1%B1%E7%94%B0%E7%94%BA%E7%94%BA%E5%86%85%E7%B7%9A.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-05",
+    "category": "交通",
+    "question": "山田病院に朝行くF20は、時刻表では山田駅前から何分かかりますか。出発と到着も教えて。",
+    "required_patterns": [
+      "6分",
+      "8[:：]05|8時05分|8時5分",
+      "8[:：]11|8時11分"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.iwate-kenpokubus.co.jp/wp/wp-content/uploads/20261001%E5%B1%B1%E7%94%B0%E7%94%BA%E7%94%BA%E5%86%85%E7%B7%9A.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-06",
+    "category": "交通",
+    "question": "11月に旧まちなか循環バスのパンフを見つけました。2026年現在も乗れますか。終了日と後継を教えて。",
+    "required_patterns": [
+      "(?:2026年|令和8年)?9月30日",
+      "いぐバス山田"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/2967.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-07",
+    "category": "交通",
+    "question": "いぐバスで予約時間に停留所に3分遅れたら、車はそのあとも待っていますか？",
+    "required_patterns": [
+      "3分",
+      "出発|次の目的地|待ちません"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/10434.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-08",
+    "category": "交通",
+    "question": "予約が確定したあと、行き先だけ変えたい。どうしたらいい？",
+    "required_patterns": [
+      "どの|何の|種類|何を"
+    ],
+    "required_sources": {},
+    "react": {
+      "as_of": "2026-11-22",
+      "follow_up": {
+        "question": "山田町のいぐバス山田の呼び出しです。",
+        "required_patterns": [
+          "キャンセル|取消",
+          "再度|もう一度|取り直|やり直|改めて"
+        ],
+        "required_sources": {},
+        "source_urls": [
+          [
+            "https://www.town.yamada.iwate.jp/docs/10434.html"
+          ]
+        ]
+      }
+    },
+    "action": "clarify"
+  },
+  {
+    "id": "transport-09",
+    "category": "交通",
+    "question": "今まさに走っている山田町内線F20は、大沢の停留所にあと何分で着きますか？時刻表の話は不要。",
+    "required_patterns": [
+      "確認でき|根拠|見つか|わかりません|分かりません"
+    ],
+    "required_sources": {},
+    "action": "insufficient",
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "transport-10",
+    "category": "交通",
+    "question": "電話しか使えないんですが、いぐバスを2週間前から予約できますか。受付開始日と電話番号が知りたい。",
+    "required_patterns": [
+      "1週間前|7日前",
+      "0195-26-8334"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/10434.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-01",
+    "category": "住民手続き",
+    "question": "転入じゃなく町内で引っ越したとき、別世帯の友人が代わりに届けるなら期限と委任状の扱いは？",
+    "required_patterns": [
+      "14日以内",
+      "委任状",
+      "本人確認"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/72.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-02",
+    "category": "住民手続き",
+    "question": "すでに県外へ引っ越したんですが、山田町に戻らず転出届を出せますか。郵送用はどの書類？",
+    "required_patterns": [
+      "郵送|郵便",
+      "転出届"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/72.html",
+        "https://www.town.yamada.iwate.jp/docs/79.html",
+        "https://www.town.yamada.iwate.jp/docs/203.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-03",
+    "category": "住民手続き",
+    "question": "妹に委任状を渡して、山田町役場で他市の戸籍謄本を広域交付してもらえますか？",
+    "required_patterns": [
+      "代理人.{0,35}(?:できません|不可|不可とな|受け付け|対象外)|委任状.{0,35}(?:できません|不可|認められていません)"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/6989.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-04",
+    "category": "住民手続き",
+    "question": "山田町の戸籍の広域交付を船越支所で受けたい。顔写真なしの身分証でも行けますか。",
+    "required_patterns": [
+      "本庁|役場1階",
+      "顔写真(?:の)?(?:付き|つき|が付|入り)"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/6989.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    },
+    "forbidden_patterns": [
+      "(?:船越|豊間根)支所(?:で|でも)(?:.{0,14})(?:受付|受け付け|交付|取得|手続き)(?:.{0,6})(?:可能|できます)"
+    ]
+  },
+  {
+    "id": "procedure-05",
+    "category": "住民手続き",
+    "question": "他市に本籍がある祖父の戸籍謄本を山田町の広域交付で取りたい。孫が窓口に行けますか。1通の費用は？",
+    "required_patterns": [
+      "孫|直系卑属",
+      "450円"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/6989.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-06",
+    "category": "住民手続き",
+    "question": "委任状で友人に頼んだら、証明書は友人が窓口で受け取れますか？",
+    "required_patterns": [
+      "どの|何の|種類|何を"
+    ],
+    "required_sources": {},
+    "react": {
+      "as_of": "2026-11-22",
+      "follow_up": {
+        "question": "マイナンバーを載せた山田町の住民票です。",
+        "required_patterns": [
+          "本人.{0,32}(?:住所|居所)|本人宛",
+          "簡易書留",
+          "代理人.{0,42}(?:できません|不可|交付されません|交付されることはありません|受け取れません)|交付申請(?:のみ|まで)"
+        ],
+        "required_sources": {},
+        "source_urls": [
+          [
+            "https://www.town.yamada.iwate.jp/fs/1/0/9/0/6/6/_/___.pdf"
+          ]
+        ]
+      }
+    },
+    "action": "clarify"
+  },
+  {
+    "id": "procedure-07",
+    "category": "住民手続き",
+    "question": "いんかんとうろくを代理人に頼むときの最初の届出名と、町から来る照会文書の有効期限は？",
+    "required_patterns": [
+      "代理人選任届",
+      "1(?:か|カ|ヶ|箇)?月"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/fs/5/8/0/8/5/_/_____________.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-08",
+    "category": "住民手続き",
+    "question": "山田町から転出した親の所得証明を子が窓口で取るなら、家族と分かるだけで足りる？",
+    "required_patterns": [
+      "委任状",
+      "本人確認"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/190.html",
+        "https://www.town.yamada.iwate.jp/fs/1/1/4/7/6/9/_/tennsyutusyaannnai.pdf"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-09",
+    "category": "住民手続き",
+    "question": "山田町に固定資産を持っているけど、持っていないことの証明（無資産証明）を出してもらえる？",
+    "required_patterns": [
+      "(?:発行|交付).{0,13}(?:できません|できない|されません|されない)|対象外"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/190.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  },
+  {
+    "id": "procedure-10",
+    "category": "住民手続き",
+    "question": "山田町の税証明を郵便で取り寄せる場合、手数料は現金を入れる？返信封筒には何が必要？",
+    "required_patterns": [
+      "定額小為替",
+      "切手",
+      "住所|宛名"
+    ],
+    "required_sources": {},
+    "source_urls": [
+      [
+        "https://www.town.yamada.iwate.jp/docs/190.html"
+      ]
+    ],
+    "react": {
+      "as_of": "2026-11-22"
+    }
+  }
+]

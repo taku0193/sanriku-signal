@@ -251,5 +251,6 @@ export function findCollectionDays(district: string, bounds: ReturnType<typeof c
     lines.push("粗大ごみは収集月の20日までに芳賀清掃社への予約が必要です。");
   }
   const answer = heading + "\n\n" + lines.join("\n");
-  return [{ ...calendar, text: answer, calendar_answer: answer, source: "山田町の地区別ごみ収集日程表（1ページ）" }];
+  return [{ ...calendar, text: answer, calendar_answer: answer, period: { from: first, through: last },
+    source: "山田町の地区別ごみ収集日程表（1ページ）" }];
 }
