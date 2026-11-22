@@ -19,12 +19,21 @@ const PRIOR_LIMIT = 300;
 const MAX_PRIOR_PASSAGES = 3;
 const TARGETS = ["official_documents", "collection_calendars"];
 const NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。";
+const NO_LIVE_INFORMATION = "手元の資料では、現在の状況や当日の変更を確認できませんでした。施設や運営元、町の最新のお知らせをご確認ください。";
+const OUTSIDE_SCOPE = "岩手県山田町の観光や暮らしを案内しています。山田町に関係する内容をお尋ねください。";
 const INSTRUCTIONS = readTextFile("prompts/react.md").trimEnd()
   .replace("{ANSWER_INSTRUCTIONS}", ANSWER_INSTRUCTIONS)
   .replace("{TYPE_GUIDE}", Object.entries(COLLECTION_TYPES).map(([key, label]) => `  ${key} は ${label}`).join("\n"));
 const TOOL_INSTRUCTIONS = readTextFile("prompts/react-tools.md").trimEnd();
-const HISTORY_INSTRUCTIONS = "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、回答の根拠は今回の observations に限定します。";
+const HISTORY_INSTRUCTIONS = "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使います。同じ質問を再度された場合も資料を検索し、今回の observations を回答の根拠とします。";
 const STREAM_INSTRUCTIONS = "回答を返す場合は、JSONを action、sources、answer の順で書いてください。";
+const CONSTRAINT_INSTRUCTIONS = "候補ごとに年齢・移動手段・除外指定などを資料と照合します。必須条件が未確認なら、候補の実名と不足条件で検索します。徒歩で行けるという案内には、徒歩、距離、隣接のいずれかを示す資料を使います。適合する施設の名前、行きやすい理由、実際にできることを簡潔に説明し、対象外の候補は回答から省きます。営業時間を聞かれていなければ、今日の営業状況、曜日、営業時間は回答に入れません。「遊べる場所」のように活動が広い場合は、児童図書の読書など資料にある活動を具体的に伝え、遊具などは資料で確認した場合だけ案内します。";
+const REVIEW_INSTRUCTIONS = "候補回答を引用資料と照合します。確認できた部分を先に見つけます。資料が駅との隣接を示せば徒歩での案内ができます。『遊べる場所』のように活動の指定が広ければ、資料にある児童図書の読書など具体的な過ごし方を案内できます。遊具は指定があるときだけ確認します。回答全体が裏づけられれば supported=true。無関係な候補や、今日の開館など未確認の断定を除く必要があれば supported=false とし、残せる文章を回答から一字一句変えずに一続きで excerpt に抜き出します。該当する文章もなく、調べられる条件があれば具体的な検索語を query に入れます。";
+const REVIEW_FORMAT = {
+  type: "object",
+  properties: { supported: { type: "boolean" }, excerpt: { type: "string" }, query: { type: "string" } },
+  required: ["supported"], additionalProperties: false,
+};
 
 const ACTIONS = ["answer", "clarify", "insufficient", "search"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -146,6 +155,10 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       items: { type: "string", ...(sourceIds.size ? { enum: [...sourceIds] } : {}) },
     };
     const expandable = state.expandable_source_ids;
+    const wording = state.question + " " + (state.follow_up?.reply ?? "");
+    const checkConstraints = !state.collection_hints &&
+      /以外|を除[くい]|抜きで|が使えない|できない場合/u.test(normalize(wording));
+    const stream = checkConstraints ? undefined : onContent;
     const properties = {
       action: { type: "string", enum: actions },
       target: { type: "string", enum: expandable?.length ? [...TARGETS, "source_details"] : TARGETS },
@@ -159,25 +172,52 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       start_date: { type: "string" },
       end_date: { type: "string" },
       waste_types: { type: "array", items: { type: "string", enum: Object.keys(COLLECTION_TYPES) } },
-      field: { type: "string", enum: ["district"] },
+      field: { type: "string", enum: ["district", "condition"] },
+      reason: { type: "string", enum: ["missing_evidence", "live_information", "outside_scope"] },
       answer: { type: "string" },
       other_answer: { type: "string" },
       sources,
     };
     const instructions = [
-      INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(onContent ? [STREAM_INSTRUCTIONS] : []),
+      INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(checkConstraints ? [CONSTRAINT_INSTRUCTIONS] : []),
+      ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(stream ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
     const decision = await chatJson({
-      model, signal, onContent, timeoutMs,
+      model, signal, onContent: stream, timeoutMs,
       messages: [{ role: "system", content: instructions }, { role: "user", content: formatPromptJson(state) }],
       format: {
         type: "object",
-        properties: onContent ? Object.assign({ action: properties.action, sources, answer: properties.answer }, properties) : properties,
+        properties: stream ? Object.assign({ action: properties.action, sources, answer: properties.answer }, properties) : properties,
         required: ["action"], additionalProperties: false,
       },
     });
     if (!ACTIONS.some((action) => action === decision.action)) {
       throw new OllamaError("AIから検索や回答に必要な指示を読み取れませんでした。");
+    }
+    if (checkConstraints && decision.action === "answer" && actions.includes("answer") &&
+        Array.isArray(decision.sources) && typeof decision.answer === "string") {
+      const cited = new Set(decision.sources);
+      const passages = new Map([
+        ...(state.prior_passages ?? []),
+        ...state.observations.flatMap(({ passages }) => passages),
+      ].filter(({ id }) => cited.has(id)).map((passage) => [passage.id, passage]));
+      const review = await chatJson({
+        model, signal, timeoutMs, format: REVIEW_FORMAT,
+        messages: [
+          { role: "system", content: REVIEW_INSTRUCTIONS },
+          { role: "user", content: formatPromptJson({
+            question: state.question, follow_up: state.follow_up, answer: decision.answer, passages: [...passages.values()],
+          }) },
+        ],
+      });
+      if (review.supported !== true) {
+        const excerpt = trimString(review.excerpt);
+        if (excerpt && decision.answer.includes(excerpt)) return { ...decision, answer: excerpt };
+        const query = trimString(review.query);
+        return actions.includes("search") && query && [...query].length <= 400
+          ? { action: "search", target: "official_documents", query, missing_fact: "候補と利用条件の照合" }
+          : { action: "insufficient" };
+      }
     }
     return decision;
   };
@@ -230,8 +270,13 @@ function passageFor(record: SourceRecord, limit: number): Passage {
 function configureSearch(event: SearchEvent, decision: Record<string, unknown>, today: string,
                          wording: string[], hints: CollectionHints | undefined, retrieve: Retriever, strategies: SearchStrategy[], signal?: AbortSignal) {
   if (event.target === "official_documents") {
-    const query = trimString(decision.query);
-    if (!query || [...query].length > 400) return;
+    const searchTerms = trimString(decision.query);
+    if (!searchTerms) return;
+    const ageGroups = [...new Set(wording.join(" ").match(/小学生|中学生|高校生|未就学児|乳幼児/g))];
+    const ageGroup = ageGroups.length === 1 ? ageGroups[0] : undefined;
+    const query = ageGroup && /屋内|遊|子[供ど]|こども|親子/u.test(searchTerms) && !searchTerms.includes(ageGroup)
+      ? searchTerms + " " + ageGroup : searchTerms;
+    if ([...query].length > 400) return;
     const strategy = decision.strategy === undefined ? strategies[0] : strategies.find((value) => value === decision.strategy);
     if (!strategy) return;
     Object.assign(event, { query, strategy });
@@ -294,8 +339,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   if (pending) state.follow_up = { asked: pending.prompt, reply };
   const wording = pending ? [reply, pending.question] : [question];
   let calendarQuestion = asksCollectionDate(wording.join("\n"));
+  const repeatedQuestion = !pending && history?.some((turn) => normalize(turn.question) === normalize(question));
   if (calendarQuestion) state.collection_hints = collectionHints(wording);
-  const reservationOnly = !calendarQuestion && asksReservationDeadline(normalize(state.question));
 
   const evidence = new Map<string, SourceRecord>();
   const exposedLengths = new Map<string, number>();
@@ -308,11 +353,11 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     });
   }
 
-  function clarify(prompt: string, districtHint?: string): TurnResult {
+  function clarify(prompt: string, field: Pending["field"], districtHint?: string): TurnResult {
     const prior = [...evidence.values()].filter((record) => !record.calendar_answer).slice(0, MAX_PRIOR_PASSAGES);
     return {
       action: "clarify", answer: prompt, sources: [],
-      pending: { question: state.question, field: "district", prompt, ...(districtHint ? { district_hint: districtHint } : {}) },
+      pending: { question: state.question, field, prompt, ...(districtHint ? { district_hint: districtHint } : {}) },
       ...(prior.length ? { checkpoint: prior } : {}),
     };
   }
@@ -321,11 +366,15 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   let ambiguity: AmbiguousDistrict | undefined;
   let searches = 0;
   let searchDetail: string | undefined;
+  let insufficientReason: unknown;
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
-    const actions: Action[] = reservationOnly || state.collection_hints?.district
-      ? ["insufficient"] : ["clarify", "insufficient"];
+    const canClarifyDistrict = calendarQuestion && !state.collection_hints?.district;
+    const canClarifyCondition = !calendarQuestion && !pending;
+    const repeatNeedsSearch = step === 0 && repeatedQuestion && !calendarQuestion;
+    const actions: Action[] = repeatNeedsSearch ? [] : ["insufficient"];
+    if (!repeatNeedsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
     if (evidence.size) actions.push("answer");
     const remaining = Math.min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1);
     if (remaining) actions.push("search");
@@ -406,9 +455,13 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const answer = trimString(decision.answer);
     const sources = knownSourceIds(decision.sources, evidence)
       ? [...new Set(decision.sources)].map((id) => evidence.get(id)!) : [];
-    if (ambiguity) return clarify(`「${ambiguity.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, ambiguity.district);
-    if (action === "clarify" && decision.field === "district" && calendarQuestion) {
-      return clarify("山田町内のどの地区か教えてください。", hint);
+    if (ambiguity) return clarify(`「${ambiguity.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", ambiguity.district);
+    if (action === "clarify" && decision.field === "district" && canClarifyDistrict) {
+      return clarify("山田町内のどの地区か教えてください。", "district", hint);
+    }
+    if (action === "clarify" && decision.field === "condition" && canClarifyCondition &&
+        answer && [...answer].length <= 120 && !/https?:\/\//i.test(answer)) {
+      return clarify(compactText(answer), "condition");
     }
     if (action === "answer" && sources.length) {
       const dates = sources.flatMap((record) => record.calendar_answer ? [record.calendar_answer] : []);
@@ -419,10 +472,15 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       }
       if (answer && !calendarQuestion) return { action, answer, sources, pending: null };
     }
+    if (action === "insufficient") insufficientReason = decision.reason;
     break;
   }
   if (state.observations.length && state.observations.every(({ status }) => status === "invalid" || status === "error")) {
     throw new KnowledgeSearchError(searches ? "AIが資料の検索を完了できませんでした。" : "AIが検索語など、資料を探す条件を指定できませんでした。");
   }
-  return { action: "insufficient", answer: calendarQuestion ? NO_COLLECTION_DATES : NO_EVIDENCE, sources: [], pending: null };
+  const answer = calendarQuestion ? NO_COLLECTION_DATES
+    : insufficientReason === "live_information" ? NO_LIVE_INFORMATION
+    : insufficientReason === "outside_scope" ? OUTSIDE_SCOPE
+    : NO_EVIDENCE;
+  return { action: "insufficient", answer, sources: [], pending: null };
 }

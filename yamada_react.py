@@ -21,6 +21,10 @@ MAX_DECISIONS = MAX_SEARCHES + 1
 TARGETS = ("official_documents", "collection_calendars")
 TYPE_GUIDE = "\n".join(f"  {key} は {label}" for key, label in COLLECTION_TYPES.items())
 NO_COLLECTION_DATES = "登録済みの日程表から、該当する収集日を確認できませんでした。"
+INSUFFICIENT_MESSAGES = {
+    "live_information": "手元の資料では、現在の状況や当日の変更を確認できませんでした。施設や運営元、町の最新のお知らせをご確認ください。",
+    "outside_scope": "岩手県山田町の観光や暮らしを案内しています。山田町に関係する内容をお尋ねください。",
+}
 HISTORY_INSTRUCTIONS = (
     "history は、直前までの質問と回答です。指示語や省略された対象を解釈するためだけに使い、"
     "回答の根拠は今回の observations に限定します。"
@@ -97,7 +101,8 @@ def make_react_decider(model):
                 "start_date": {"type": "string"},
                 "end_date": {"type": "string"},
                 "waste_types": {"type": "array", "items": {"type": "string", "enum": list(COLLECTION_TYPES)}},
-                "field": {"type": "string", "enum": ["district"]},
+                "field": {"type": "string", "enum": ["district", "condition"]},
+                "reason": {"type": "string", "enum": ["missing_evidence", *INSUFFICIENT_MESSAGES]},
                 "answer": {"type": "string"},
                 "other_answer": {"type": "string"},
                 "sources": {"type": "array", "items": {"type": "string"}},
@@ -160,9 +165,9 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
     calendar_question = asks_collection_date("\n".join(wording))
     reservation_only = not calendar_question and asks_reservation_deadline(normalize(state["question"]))
 
-    def clarify_district(prompt, district_hint=None):
+    def clarify(prompt, field, district_hint=None):
         next_pending = {
-            "question": state["question"], "field": "district", "prompt": prompt,
+            "question": state["question"], "field": field, "prompt": prompt,
         }
         if district_hint:
             next_pending["district_hint"] = district_hint
@@ -180,7 +185,7 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
     searches = 0
     search_detail = None
     for step in range(MAX_DECISIONS):
-        actions = ["insufficient"] if reservation_only else ["clarify", "insufficient"]
+        actions = ["clarify", "insufficient"] if not reservation_only and (calendar_question or not pending) else ["insufficient"]
         if evidence:
             actions.append("answer")
         remaining = min(MAX_SEARCHES - searches, MAX_DECISIONS - step - 1)
@@ -281,11 +286,14 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
         answer = raw_answer.strip() if isinstance(raw_answer, str) else ""
         sources = cited_records(decision, evidence)
         if ambiguity:
-            return clarify_district(f"「{ambiguity.name}」には複数の収集区分があります。"
-                                    "区番号や、ごみステーションの目印を教えてください。", ambiguity.name)
-        if action == "clarify" and decision.get("field") == "district":
+            return clarify(f"「{ambiguity.name}」には複数の収集区分があります。"
+                           "区番号や、ごみステーションの目印を教えてください。", "district", ambiguity.name)
+        if action == "clarify" and decision.get("field") == "district" and calendar_question:
             prompt = answer if 0 < len(answer) <= 400 else "山田町内のどの地区か教えてください。"
-            return clarify_district(prompt, hint)
+            return clarify(prompt, "district", hint)
+        if (action == "clarify" and decision.get("field") == "condition" and not calendar_question
+                and not pending and 0 < len(answer) <= 120 and not re.search(r"https?://", answer, re.I)):
+            return clarify(" ".join(answer.split()), "condition")
         if action == "answer" and sources:
             dates = [record["calendar_answer"] for record in sources if "calendar_answer" in record]
             if dates:
@@ -296,6 +304,8 @@ def run_turn(question, records, decide, *, pending=None, history=(), on_action=N
             if answer and not calendar_question:
                 return TurnResult(action, answer, sources)
         if action == "insufficient" and not calendar_question:
-            return TurnResult(action, answer or NO_EVIDENCE, sources)
+            reason = decision.get("reason")
+            message = INSUFFICIENT_MESSAGES.get(reason, NO_EVIDENCE) if isinstance(reason, str) else NO_EVIDENCE
+            return TurnResult(action, message, [])
         break
     return TurnResult("insufficient", NO_COLLECTION_DATES if calendar_question else NO_EVIDENCE, [])

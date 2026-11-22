@@ -114,8 +114,11 @@
     "required_patterns": ["はぴね", "陸中山田駅.{0,30}(?:隣|すぐそば)|(?:隣接|すぐ隣)", "児童図書|読書|本を読"],
     "forbidden_patterns": ["本日|今日は|(?:650|800)\\s*(?:m|メートル)", "(?:どちら|両(?:方|施設|館)).{0,28}火曜|はぴね.{0,14}休館日.{0,8}火曜", "駅(?:舎)?の隣には?「?まちなか交流センター"],
     "required_sources": {
-      "md-hapine-family": "https://www.town.yamada.iwate.jp/docs/247.html",
-      "santetsu-rikuchuyamada": "https://www.sanrikutetsudou.com/駅情報/陸中山田駅/"
+      "md-hapine-family": "https://www.town.yamada.iwate.jp/docs/247.html"
+    },
+    "one_of_sources": {
+      "santetsu-rikuchuyamada": "https://www.sanrikutetsudou.com/駅情報/陸中山田駅/",
+      "md-hapine-station-access": "https://www.town.yamada.iwate.jp/docs/iju_osusume.html"
     }
   },
   {
@@ -482,7 +485,7 @@
     "question": "みちのく潮風トレイルで陸中海岸青少年の家から鯨山へ登る往復ルートは何キロですか？",
     "expected_answer": "陸中海岸青少年の家を起点とする往復ルートは約7.0km。",
     "required_patterns": ["7(?:\\.0)?\\s*(?:km|㎞|キロ)", "往復"],
-    "required_sources": {"tourism-shiokaze-trail-report1-2": "https://www.yamada-kankou.jp/shiokaze-trail/report1/"}
+    "required_sources": {"md-kujirayama-round-trip": "https://www.yamada-kankou.jp/shiokaze-trail/report1/"}
   },
   {
     "id": "osawa-population-2026-11",
@@ -553,7 +556,7 @@
     "category": "くらし",
     "question": "山田町のパートナーシップ宣誓は希望日の何日前までに予約して、書類はいつ提出しますか？",
     "expected_answer": "予約と書類提出はともに宣誓希望日の10日前まで。",
-    "required_patterns": ["10\\s*日前", "予約", "提出"],
+    "required_patterns": ["10\\s*日前", "予約", "提出|郵送|持参"],
     "required_sources": {"md-partnership-oath-booking": "https://www.town.yamada.iwate.jp/fs/1/3/8/3/3/4/_/____________________________.pdf#page=5"}
   },
   {
@@ -595,5 +598,80 @@
     "expected_answer": "2026年4月以降は月1回、毎月1日。",
     "required_patterns": ["月\\s*1\\s*回", "毎月.{0,8}1\\s*日"],
     "required_sources": {"md-town-bulletin-frequency-2026": "https://www.town.yamada.iwate.jp/fs/1/3/7/5/9/8/_/0315_1P-4P.pdf#page=2"}
+  },
+  {
+    "id": "reservation-clarify",
+    "category": "観光",
+    "question": "予約が必要ですか？",
+    "action": "clarify",
+    "first_action": "clarify",
+    "required_patterns": ["どの.{0,20}(?:施設|体験|予約)|何の.{0,15}予約"],
+    "required_sources": {},
+    "react": {
+      "follow_up": {
+        "question": "山田湾のサッパ船クルーズです。",
+        "required_patterns": ["(?:予約|申[し]?込[み]?|事前申請).{0,30}必要|予約制", "2週間前|14日前"],
+        "required_sources": {"md-yamada-bay-sappa-cruise": "https://www.yamada-kankou.jp/plan/plan-5684/"}
+      }
+    }
+  },
+  {
+    "id": "certificate-clarify",
+    "category": "くらし",
+    "question": "山田の証明書を取りたいです。",
+    "action": "clarify",
+    "first_action": "clarify",
+    "required_patterns": ["どの.{0,15}証明書|証明書の種類"],
+    "required_sources": {},
+    "react": {
+      "follow_up": {
+        "question": "住民票の写しをコンビニで取りたいです。何が必要でいくらですか？",
+        "required_patterns": ["4桁", "暗証番号", "300\\s*円"],
+        "required_sources": {"md-resident-certificate-convenience": "https://www.town.yamada.iwate.jp/docs/6680.html"}
+      }
+    }
+  },
+  {
+    "id": "known-hours-unknown-crowd",
+    "category": "観光",
+    "question": "明日の道の駅やまだの混雑状況と、普段の閉館時刻を教えて。",
+    "required_patterns": ["18(?:時|:00)", "混雑.{0,50}(?:確認でき|お答えすることができ|分かり|わかり|記載がな)"],
+    "forbidden_patterns": ["混雑する(?:でしょう|見込み)|混雑します"],
+    "required_sources": {"oisuta-hours": "https://yamada-oisuta.jp/"}
+  },
+  {
+    "id": "nonexistent-aquarium",
+    "category": "観光",
+    "question": "岩手県山田町の「山田銀河水族館」の入館料は？",
+    "required_patterns": ["根拠.{0,24}確認できません"],
+    "forbidden_patterns": ["[0-9]+\\s*円"],
+    "required_sources": {}
+  },
+  {
+    "id": "question-outside-yamada",
+    "category": "対象範囲",
+    "question": "京都駅から清水寺までのバスを教えて。",
+    "required_patterns": ["岩手県山田町"],
+    "forbidden_patterns": ["[0-9]+\\s*系統"],
+    "required_sources": {}
+  },
+  {
+    "id": "evacuation-shelters-open-now",
+    "category": "防災",
+    "question": "山田町のどの避難所が今開いていますか？",
+    "required_patterns": ["現在の状況.{0,20}確認できません", "最新のお知らせ"],
+    "forbidden_patterns": ["開いています|開設中です"],
+    "required_sources": {}
+  },
+  {
+    "id": "indoor-child-visit-with-exclusions",
+    "category": "観光",
+    "question": "車なしで駅から行けて、雨でも小学生が遊べる場所は？科学館以外でお願いします。",
+    "required_patterns": ["はぴね", "児童図書|読書|本を読"],
+    "forbidden_patterns": ["科学館を(?:おすすめ|案内)|なかよし.{0,18}(?:をおすすめ|を推奨)", "本日|今日は|開館時間"],
+    "required_sources": {
+      "md-hapine-family": "https://www.town.yamada.iwate.jp/docs/247.html",
+      "md-hapine-station-access": "https://www.town.yamada.iwate.jp/docs/iju_osusume.html"
+    }
   }
 ]

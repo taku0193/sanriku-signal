@@ -10,11 +10,32 @@ import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
 import { makeDecider, runTurn, streamGroundedAnswer } from "../server/react.js";
 import { loadRecords, makeSourceReader, NO_EVIDENCE } from "../server/records.js";
-import { createGuideServer, readHistory } from "../server/web.js";
+import { createGuideServer, readHistory, readPending } from "../server/web.js";
 
 const records = loadRecords();
 const keyword = makeRetriever(records, "keyword");
 const searchMuseum = { action: "search", target: "official_documents", query: "鯨と海の科学館 入館料", missing_fact: "科学館の入館料" };
+
+test("質問の対象を聞き返し、元の質問と返答を引き継ぐ", async () => {
+  const first = await runTurn("料金はいくらですか？", async () => ({
+    action: "clarify", field: "condition", answer: "どの施設の料金ですか？",
+  }), keyword);
+  assert.equal(first.action, "clarify");
+  assert.deepEqual(first.sources, []);
+  assert.equal(first.pending?.field, "condition");
+  assert.throws(() => readPending({ ...first.pending, district_hint: "大沢" }), TypeError);
+  const next = await runTurn("鯨と海の科学館です", async (state, actions) => {
+    assert.equal(state.question, "料金はいくらですか？");
+    assert.equal(state.follow_up?.reply, "鯨と海の科学館です");
+    assert.ok(!actions.includes("clarify"));
+    return state.observations.length
+      ? { action: "answer", answer: "大人300円です。", sources: ["museum-fees"] }
+      : searchMuseum;
+  }, keyword, { pending: readPending(first.pending) });
+  assert.equal(next.answer, "大人300円です。");
+  assert.equal(next.sources[0].id, "museum-fees");
+  assert.equal(next.pending, null);
+});
 
 test("Unicodeの本文は取得済みの資料IDを確認した後にだけ流す", () => {
   const evidence = new Map([["museum-fees", true]]);

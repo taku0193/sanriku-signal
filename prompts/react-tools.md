@@ -14,7 +14,7 @@ available_sections は各資料IDから追加で読める節の見出しです�
 keyword は正確な施設名や制度名で絞るとき、semantic は表現の異なる資料を探すときに使えます。
 retrieval が keyword_fallback のときは埋め込みを使えなかった結果です。
 prior_passages は聞き返す前に確認した一般資料です。follow_up の条件と合わせて使い、地区で変わる収集日は照合します。
-答えられる部分がなければ action=insufficient だけを返します。
+答えられる部分がなければ action=insufficient と理由を示す reason を返します。
 比較に必要な事実がまだ一つでも未取得で remaining_searches が正のときは、action=search を返してください。
 詳細検索を選ぶ場合の形式
 {"action":"search","target":"source_details","source_id":"doc-access","query":"通常の開館時間 閉館時刻","missing_fact":"施設の閉館時刻"}

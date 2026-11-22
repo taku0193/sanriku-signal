@@ -12,6 +12,7 @@ interface Expectations {
   required_patterns: string[];
   forbidden_patterns?: string[];
   required_sources: Record<string, string>;
+  one_of_sources?: Record<string, string>;
   action?: string;
   first_action?: string;
 }
@@ -81,10 +82,14 @@ async function evaluateAnswer(item: AnswerCase) {
     const missingPatterns = turn.required_patterns.filter((pattern) => !new RegExp(pattern, "u").test(answer));
     const forbidden = (turn.forbidden_patterns ?? []).filter((pattern) => new RegExp(pattern, "u").test(answer));
     const expectedSources = Object.entries(turn.required_sources);
-    const missingSources = expectedSources.filter(([id, url]) => !sources.some((hit) => hit.id === id && hit.url === url));
-    const expectedAction = turn.action ?? (expectedSources.length ? "answer" : "insufficient");
+    const equivalentSources = Object.entries(turn.one_of_sources ?? {});
+    const cited = ([id, url]: [string, string]) => sources.some((hit) => hit.id === id && hit.url === url);
+    const missingSources = expectedSources.filter((source) => !cited(source));
+    if (equivalentSources.length && !equivalentSources.some(cited)) missingSources.push(...equivalentSources);
+    const expectsSource = expectedSources.length > 0 || equivalentSources.length > 0;
+    const expectedAction = turn.action ?? (expectsSource ? "answer" : "insufficient");
     const passed = previous.action === expectedAction && (!turn.first_action || firstAction === turn.first_action) &&
-      !missingPatterns.length && !forbidden.length && !missingSources.length && Boolean(expectedSources.length || !sources.length) &&
+      !missingPatterns.length && !forbidden.length && !missingSources.length && (expectsSource || !sources.length) &&
       (!chunks.length || chunks.join("").trimEnd() === previous.answer);
     turns.push({
       question: turn.question, action: previous.action, expectedAction, firstAction, answer: previous.answer,

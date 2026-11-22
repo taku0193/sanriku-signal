@@ -53,7 +53,8 @@ function readText(value: unknown, limit = QUESTION_LIMIT): string {
 
 export function readPending(value: unknown): Pending | null {
   if (value === undefined || value === null) return null;
-  if (!isObject(value) || value.field !== "district" ||
+  if (!isObject(value) || (value.field !== "district" && value.field !== "condition") ||
+      (value.field === "condition" && Object.hasOwn(value, "district_hint")) ||
       Object.keys(value).some((key) => !["question", "field", "prompt", "district_hint", "resume_token"].includes(key))) {
     throw new TypeError();
   }
@@ -62,7 +63,7 @@ export function readPending(value: unknown): Pending | null {
       (typeof resumeToken !== "string" || !/^[a-f0-9-]{36}$/.test(resumeToken))) throw new TypeError();
   return {
     question: readText(value.question),
-    field: "district",
+    field: value.field,
     ...(typeof resumeToken === "string" ? { resume_token: resumeToken } : {}),
     prompt: readText(value.prompt),
     ...(Object.hasOwn(value, "district_hint") ? { district_hint: readText(value.district_hint) } : {}),
@@ -181,6 +182,7 @@ export function createGuideServer({ model, retrieval, records = loadRecords(), d
         const saved = token ? checkpoints.get(token) : undefined;
         const resume = saved && saved.expiresAt > Date.now() &&
           saved.pending.question === pending?.question && saved.pending.prompt === pending.prompt &&
+          saved.pending.field === pending.field &&
           saved.pending.district_hint === pending.district_hint ? saved : undefined;
         const { checkpoint, ...result } = await runTurn(question, decide, retrieve, {
           pending, history, signal, searchMode: retrieval, readSource, checkpoint: resume?.records,

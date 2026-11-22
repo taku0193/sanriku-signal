@@ -144,7 +144,7 @@
     "category": "観光",
     "kind": "exact",
     "question": "みちのく潮風トレイルで陸中海岸青少年の家から鯨山へ登る往復ルートは何キロですか？",
-    "expected_sources": [["tourism-shiokaze-trail-report1-2"]]
+    "expected_sources": [["tourism-shiokaze-trail-report1-2", "md-kujirayama-round-trip"]]
   },
   {
     "id": "osawa-population-2026-11",
