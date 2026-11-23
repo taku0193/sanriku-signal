@@ -9,15 +9,17 @@ import {
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
 import { isObject, readTextFile } from "./files.js";
-import { chatJson, OllamaResponseError } from "./ollama.js";
+import { chatJson, OllamaError, OllamaResponseError } from "./ollama.js";
 import { asksForUpcomingEvent, documentsEventYear, documentsUpcomingEvent, requestedEventYear } from "./periods.js";
 import { ANSWER_INSTRUCTIONS, NO_EVIDENCE, rankSections } from "./records.js";
 import type { SourceReader } from "./records.js";
 
-const MAX_SEARCHES = 3;
+const MAX_SEARCHES = 5;
 const MAX_DECISIONS = MAX_SEARCHES + 1;
+const EVIDENCE_REVIEW_TIMEOUT = 8_000;
 const EXCERPT_LIMIT = 600;
 const DETAIL_LIMIT = 800;
+const EARLIER_EXCERPT_LIMIT = 240;
 const PRIOR_LIMIT = 300;
 const MAX_PRIOR_PASSAGES = 3;
 const TARGETS = ["official_documents", "collection_calendars"];
@@ -39,6 +41,8 @@ const REVIEW_FORMAT = {
   properties: { supported: { type: "boolean" }, excerpt: { type: "string" }, query: { type: "string" } },
   required: ["supported"], additionalProperties: false,
 };
+const EVIDENCE_REVIEW_INSTRUCTIONS = "回答を作る前に、質問と取得資料を照合してください。対象、年や時期、金額、例外、質問された複数の項目を確認します。質問を裏づける資料IDだけを source_ids に入れます。登録資料で調べられそうな重要な項目が未確認の場合だけ、その項目を missing_fact、検索に使える具体的な固有名と項目を query に書きます。当日の混雑や空席など登録資料で確定できない状況には検索を追加しません。質問に答える本文は出さず、JSONだけ返してください。";
+const BOOKING_SCHEDULE_INSTRUCTIONS = "電話とアプリの受付時間をそれぞれ照合し、平日の受付に土曜日と日曜日は含めません。質問に駅周辺や地区の指定があれば、対応する路線名と運行曜日を回答の冒頭で伝えてから予約方法を案内します。";
 
 const ACTIONS = ["answer", "clarify", "insufficient", "search"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -67,6 +71,19 @@ interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" 
   truncated?: true;
 }
 
+interface EvidenceReview {
+  source_ids: string[];
+  missing_fact?: string;
+  query?: string;
+}
+
+interface EvidenceReviewEvent {
+  action: "review";
+  status: "checked" | "unavailable";
+  source_ids: string[];
+  missing_fact?: string;
+}
+
 interface CollectionHints {
   district?: string;
   waste_types?: WasteType[];
@@ -93,11 +110,14 @@ interface TurnState {
   reference_question?: string;
   round_trip_counts?: string[];
   remaining_searches?: number;
+  evidence_review?: EvidenceReview;
 }
 
-export type Decider = (
+export type Decider = ((
   state: TurnState, actions: Action[], signal?: AbortSignal, onContent?: (text: string) => void,
-) => Promise<Record<string, unknown>>;
+) => Promise<Record<string, unknown>>) & {
+  reviewEvidence?: (state: TurnState, signal?: AbortSignal) => Promise<EvidenceReview>;
+};
 
 interface TurnOptions {
   pending?: Pending | null;
@@ -110,7 +130,7 @@ interface TurnOptions {
   today?: string;
   onProgress?: (stage: ProgressStage, detail?: string) => void;
   onDelta?: (text: string) => void;
-  onAction?: (action: SearchEvent | { action: Exclude<Action, "search"> }) => void;
+  onAction?: (action: SearchEvent | EvidenceReviewEvent | { action: Exclude<Action, "search"> }) => void;
 }
 
 interface TurnResult {
@@ -160,7 +180,25 @@ function formatPromptJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function stateForPrompt(state: TurnState): TurnState {
+  if (state.observations.length <= 3) return state;
+  return {
+    ...state,
+    observations: state.observations.map((observation, index) => index >= state.observations.length - 2 ? observation : {
+      ...observation,
+      passages: observation.passages.map((passage) => passage.text.length <= EARLIER_EXCERPT_LIMIT ? passage : {
+        ...passage, text: passage.text.slice(0, EARLIER_EXCERPT_LIMIT).replace(/[\uD800-\uDBFF]$/, ""), truncated: true,
+      }),
+    }),
+  };
+}
+
 const sentences = new Intl.Segmenter("ja", { granularity: "sentence" });
+
+function asksBookingSchedule(wording: string) {
+  const text = normalize(wording);
+  return /平日|休日|曜日|土曜|日曜|祝日|土日/.test(text) && /電話|あぷり/.test(text) && /予約|受付|受け付/.test(text);
+}
 
 function omitUnaskedDailySchedule(answer: string, wording: string) {
   const timing = /営業|開館|休館|閉館|開[いくきけ]|休み|定休日|何時|いつ|何曜日|日中|午前|午後|夕方|今から|今朝|今夜|今日|本日|明日|当日|きょう|あした|現在|平日|休日|週末|祝日|[月火水木金土日]曜|\d+[月日時]/;
@@ -174,7 +212,7 @@ function omitUnaskedDailySchedule(answer: string, wording: string) {
 }
 
 export function makeDecider(model: string, timeoutMs?: number): Decider {
-  return async (state, actions, signal, onContent) => {
+  const decide: Decider = async (state, actions, signal, onContent) => {
     const sourceIds = new Set([
       ...state.observations.flatMap(({ source_ids }) => source_ids),
       ...(state.prior_passages ?? []).map(({ id }) => id),
@@ -192,6 +230,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     const missingRequirement = /(?:用意|準備|持参|提示|提出)できな(?:い|く)/.test(normalizedWording);
     const asksReservation = /予約(?:が|は)?(?:必要|必須|いり|いる)|要予約/.test(normalizedWording);
     const stream = checkConstraints ? undefined : onContent;
+    const finalWithEvidence = actions.includes("answer") && !actions.includes("search");
     const properties = {
       action: { type: "string", enum: actions },
       target: { type: "string", enum: [
@@ -219,6 +258,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(state.search_wording ? [SEARCH_WORDING_INSTRUCTIONS] : []),
       ...(state.quoted_subject ? ["quoted_subject は質問された固有名です。この名称や確認済みの別名が出る資料を探します。異なる名称の資料から創刊日、公開年、料金などを転用しません。"] : []),
       ...(state.resolved_name ? ["resolved_name は資料検索に使った正式表記です。資料で同じ対象を確認できたら、回答の最初に正式表記を書きます。"] : []),
+      ...(state.evidence_review ? ["evidence_review は取得済みの資料の照合結果です。source_ids は根拠として確認する候補です。missing_fact と query があり、質問の重要な項目が観察から確認できず、検索枠が残っていれば、そこに絞って追加検索します。"] : []),
       ...(state.requested_event_year ? ["requested_event_year は利用者が尋ねた開催年です。例年の時期や別の年の予定から開催日を決めず、指定年の資料で会場や日付を確認します。period は資料の対象期間です。"] : []),
       ...(state.requested_event_after ? ["requested_event_after は次回の開催を確認する基準日です。対象の行事がその日以降に開かれることを資料で確認します。過去の開催日や例年の時期を次回の日程として使いません。"] : []),
       ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。回答本文には通常時の情報だけを書きます。当日・将来の状況が確認できない旨はアプリが追記します。"] : []),
@@ -226,15 +266,17 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(applyThreshold ? ["資料の人数や年齢の境目に利用者の条件を当てはめ、適用される区分を資料の表記で伝えます。団体料金の人数に満たない場合は、資料にあれば1人あたりの通常料金も金額で示します。代替の制度は、その利用条件まで確認できる資料があるときに案内します。"] : []),
       ...(missingRequirement ? ["書類や保証人などの要件を満たせない場合は query に元の手続きの正式名を残し、不足時の手順を探します。通常の要件に加え、代わりの手順や所要日数を確認して案内します。別の手続きの情報は省きます。"] : []),
       ...(asksReservation ? ["予約の要否が質問されています。資料で前日や何日前までの申込みが条件だと確認できた場合は『事前予約が必要です』と先に答え、期限と方法を続けます。"] : []),
+      ...(asksBookingSchedule(wording) ? [BOOKING_SCHEDULE_INSTRUCTIONS] : []),
+      ...(finalWithEvidence ? ["最後の判断です。回答する場合は、根拠として使う資料IDを一つ以上 sources に入れます。他の行動を選ぶ場合は sources を空配列にします。"] : []),
       ...(state.history ? [HISTORY_INSTRUCTIONS] : []), ...(stream ? [STREAM_INSTRUCTIONS] : []),
     ].join("\n\n");
     const decision = await chatJson({
       model, signal, onContent: stream, timeoutMs,
-      messages: [{ role: "system", content: instructions }, { role: "user", content: formatPromptJson(state) }],
+      messages: [{ role: "system", content: instructions }, { role: "user", content: formatPromptJson(stateForPrompt(state)) }],
       format: {
         type: "object",
         properties: stream ? Object.assign({ action: properties.action, sources, answer: properties.answer }, properties) : properties,
-        required: ["action"], additionalProperties: false,
+        required: finalWithEvidence ? ["action", "sources"] : ["action"], additionalProperties: false,
       },
     });
     if (!ACTIONS.some((action) => action === decision.action)) {
@@ -271,6 +313,41 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     }
     return decision;
   };
+
+  decide.reviewEvidence = async ({ question, today, history, follow_up, observations, prior_passages, resolved_name }, signal) => {
+    const passages = [...new Map([
+      ...(prior_passages ?? []),
+      ...observations.flatMap((observation) => observation.passages),
+    ].map((passage) => [passage.id, passage])).values()];
+    const ids = new Set(passages.map(({ id }) => id));
+    const notes = [EVIDENCE_REVIEW_INSTRUCTIONS];
+    if (asksBookingSchedule(question + " " + (follow_up?.reply ?? ""))) notes.push(BOOKING_SCHEDULE_INSTRUCTIONS);
+    if (resolved_name) notes.push("登録済みの名称だけを尋ねられた場合は、その名称で確認できる概要を照合します。同名の資料が複数あれば、確認できる意味ごとに扱います。");
+    const review = await chatJson({
+      model, signal, timeoutMs: Math.min(timeoutMs ?? EVIDENCE_REVIEW_TIMEOUT, EVIDENCE_REVIEW_TIMEOUT),
+      messages: [
+        { role: "system", content: notes.join("\n") },
+        { role: "user", content: formatPromptJson({ question, today, history, follow_up, passages }) },
+      ],
+      format: {
+        type: "object",
+        properties: {
+          source_ids: { type: "array", items: { type: "string", enum: [...ids] } },
+          missing_fact: { type: "string" }, query: { type: "string" },
+        },
+        required: ["source_ids"], additionalProperties: false,
+      },
+    });
+    if (!Array.isArray(review.source_ids)) throw new OllamaResponseError("AIから資料の確認結果を読み取れませんでした。");
+    const sourceIds = [...new Set(review.source_ids.filter((id): id is string => typeof id === "string" && ids.has(id)))];
+    const missing = trimString(review.missing_fact);
+    const query = trimString(review.query);
+    const noGap = /^(?:(?:特に)?(?:なし|無し|ありません)|不要|該当なし|none|null|n\/a)[。.]?$/i;
+    return missing && query && !noGap.test(missing) && !noGap.test(query) && [...query].length <= 400
+      ? { source_ids: sourceIds, missing_fact: [...compactText(missing)].slice(0, 60).join(""), query }
+      : { source_ids: sourceIds };
+  };
+  return decide;
 }
 
 const COLLECTION_DATE = /収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/;
@@ -513,12 +590,13 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   let insufficientReason: unknown;
   let referenceOnly: string | undefined;
   let retriedResponse = false;
+  let reviewedEvidence = false;
 
   for (let step = 0; step < MAX_DECISIONS; step++) {
     signal?.throwIfAborted();
     const subjectObserved = !requiresSubjectEvidence || [...evidence.values()].some(supportsRequestedSubject);
     const canClarifyDistrict = calendarQuestion && !state.collection_hints?.district;
-    const canClarifyCondition = !calendarQuestion && !pending && subjectObserved;
+    const canClarifyCondition = !calendarQuestion && !pending && !namedSubject && subjectObserved;
     const needsSearch = step === 0 && !calendarQuestion && (repeatedQuestion || namedSubject || requiresSubjectEvidence || state.reference_question);
     const actions: Action[] = needsSearch ? [] : ["insufficient"];
     if (!needsSearch && (canClarifyDistrict || canClarifyCondition)) actions.unshift("clarify");
@@ -543,6 +621,18 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const decisionState = referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
       : state;
+    if (!reviewedEvidence && decide.reviewEvidence && actions.includes("answer")) {
+      reviewedEvidence = true;
+      try {
+        const review = await decide.reviewEvidence(decisionState, signal);
+        decisionState.evidence_review = review;
+        onAction?.({ action: "review", status: "checked", source_ids: review.source_ids, missing_fact: review.missing_fact });
+      } catch (error) {
+        signal?.throwIfAborted();
+        if (!(error instanceof OllamaError)) throw error;
+        onAction?.({ action: "review", status: "unavailable", source_ids: [] });
+      }
+    }
     let decision: Awaited<ReturnType<Decider>>;
     try {
       decision = await decide(decisionState, actions, signal, stream);
@@ -557,6 +647,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     if (!action) break;
 
     if (action === "search") {
+      state.evidence_review = undefined;
       const target = decision.target === "collection_calendars" && state.collection_excluded
         ? "official_documents" : decision.target;
       let searchDecision = target === decision.target ? decision : { ...decision, query: searchQuestion };

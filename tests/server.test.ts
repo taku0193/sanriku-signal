@@ -13,6 +13,7 @@ import type { SearchStrategy } from "../server/embeddings.js";
 import { OllamaError } from "../server/ollama.js";
 import { withSourcePeriods } from "../server/periods.js";
 import { makeDecider, runTurn, streamGroundedAnswer } from "../server/react.js";
+import type { Decider } from "../server/react.js";
 import { loadRecords, makeSourceReader, NO_EVIDENCE, summarizeSearchFallback } from "../server/records.js";
 import { createGuideServer, readHistory, readPending } from "../server/web.js";
 
@@ -222,7 +223,7 @@ test("再送した検索条件を使い回して未取得の出典を拒否す�
   const result = await runTurn("料金は？", async (state) => {
     decisions++;
     if (decisions <= 2) return searchMuseum;
-    assert.equal(state.remaining_searches, 1);
+    assert.equal(state.remaining_searches, 3);
     return { action: "answer", answer: "根拠のない文", sources: ["unseen"] };
   }, async (query) => {
     searches++;
@@ -236,22 +237,47 @@ test("再送した検索条件を使い回して未取得の出典を拒否す�
   assert.deepEqual(result.sources, []);
 });
 
-test("3回目の検索結果が最終判断に届き、4回目の検索を拒否する", async () => {
+test("5回目の検索結果が最終判断に届き、6回目の検索を拒否する", async () => {
   const budgets: (number | undefined)[] = [];
   const queries: string[] = [];
   const result = await runTurn("山田町の資料を探して", async (state, actions) => {
     budgets.push(state.remaining_searches);
     const number = state.observations.length;
-    assert.equal(actions.includes("search"), number < 3);
-    if (number === 3) assert.equal(state.observations[2].status, "not_found");
+    assert.equal(actions.includes("search"), number < 5);
+    if (number === 5) assert.equal(state.observations[4].status, "not_found");
     return { ...searchMuseum, query: `検索語 ${number + 1}` };
   }, async (query) => {
     queries.push(query);
     return { records: [], mode: "keyword" };
   });
-  assert.deepEqual(budgets, [3, 2, 1, 0]);
-  assert.deepEqual(queries, ["検索語 1", "検索語 2", "検索語 3"]);
+  assert.deepEqual(budgets, [5, 4, 3, 2, 1, 0]);
+  assert.deepEqual(queries, ["検索語 1", "検索語 2", "検索語 3", "検索語 4", "検索語 5"]);
   assert.equal(result.action, "insufficient");
+});
+
+test("資料の照合は一度だけ行い、不足項目を追加検索に使える", async () => {
+  for (const scenario of ["ready", "missing", "unavailable"]) {
+    const needsHours = scenario === "missing";
+    const decisions: string[] = [];
+    const decide: Decider = Object.assign<Decider, Pick<Decider, "reviewEvidence">>(async (state) => {
+      if (!state.observations.length) return searchMuseum;
+      if (state.evidence_review?.query) return { ...searchMuseum, query: state.evidence_review.query };
+      return { action: "answer", sources: [needsHours ? "museum-hours" : "museum-fees"],
+        answer: needsHours ? "17時です。" : "大人300円です。" };
+    }, {
+      reviewEvidence: async (state) => {
+        assert.equal(state.observations[0].source_ids[0], "museum-fees");
+        if (scenario === "unavailable") throw new OllamaError("タイムアウト");
+        return needsHours ? { source_ids: [], missing_fact: "閉館時刻", query: "科学館の閉館時刻" }
+          : { source_ids: ["museum-fees"] };
+      },
+    });
+    const result = await runTurn(needsHours ? "科学館は何時まで？" : "科学館の入館料は？", decide, keyword, {
+      onAction: (event) => decisions.push(event.action),
+    });
+    assert.equal(result.action, "answer");
+    assert.deepEqual(decisions, needsHours ? ["search", "review", "search", "answer"] : ["search", "review", "answer"]);
+  }
 });
 
 test("同じ検索語で方式を切り替え、埋め込みの失敗を観察に返す", async () => {
@@ -534,13 +560,15 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
   const ollama = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
-    const { stream, messages } = JSON.parse(body);
+    const { stream, messages, format } = JSON.parse(body);
     const state = JSON.parse(messages.at(-1).content);
     const send = (decision: object) => {
       const message = { content: JSON.stringify(decision) };
       response.end(stream ? JSON.stringify({ message, done: true }) + "\n" : JSON.stringify({ message }));
     };
-    if (request.url === "/timeout") {
+    if (format.required.includes("source_ids")) {
+      send({ source_ids: state.passages.map(({ id }: { id: string }) => id) });
+    } else if (request.url === "/timeout") {
       if (!stream) send(searchMuseum);
       else {
         stalledAfterHeaders = true;
@@ -624,7 +652,7 @@ test("Ollamaの障害と検索条件の欠落で資料検索に切り替わり�
     assert.ok(result.sources.some(({ url, text }) =>
       url === "https://yamada-kujirakan.jp/facility/" && text?.includes("大人300円")));
   }
-  assert.equal(missingQueries, 3);
+  assert.equal(missingQueries, 5);
   assert.equal(stalledAfterHeaders, true);
   const recovered = await ask(stubUrl + "/recover-response");
   assert.equal(recoveredAttempts, 2);

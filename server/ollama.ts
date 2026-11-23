@@ -87,7 +87,7 @@ export async function chatJson({ model, messages, format, signal, onContent, tim
   const payload = {
     model, messages, format, stream: Boolean(onContent),
     ...(model === DEFAULT_MODEL ? { think: false } : {}),
-    options: { temperature: 0, ...(model === DEFAULT_MODEL ? { num_ctx: 6144, num_predict: 448 } : {}) },
+    options: { temperature: 0, ...(model === DEFAULT_MODEL ? { num_ctx: 8192, num_predict: 448 } : {}) },
   };
   const requestSignal = ollamaSignal(timeoutMs, signal);
   try {

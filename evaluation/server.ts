@@ -78,7 +78,7 @@ async function evaluateAnswer(item: AnswerCase) {
       previous = await runTurn(turn.question, decide, retrieve, {
         pending: previous?.pending, checkpoint: previous?.checkpoint, today: expected.as_of, readSource, resolveName,
         onAction: (event) => {
-          firstAction ??= event.action;
+          if (event.action !== "review") firstAction ??= event.action;
           actions.push(event);
         },
         onProgress: () => { chunks.length = 0; },
