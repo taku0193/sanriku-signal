@@ -41,8 +41,8 @@ const REVIEW_FORMAT = {
   properties: { supported: { type: "boolean" }, excerpt: { type: "string" }, query: { type: "string" } },
   required: ["supported"], additionalProperties: false,
 };
-const EVIDENCE_REVIEW_INSTRUCTIONS = "回答を作る前に、質問と取得資料を照合してください。対象、年や時期、金額、例外、質問された複数の項目を確認します。質問を裏づける資料IDだけを source_ids に入れます。登録資料で調べられそうな重要な項目が未確認の場合だけ、その項目を missing_fact、検索に使える具体的な固有名と項目を query に書きます。当日の混雑や空席など登録資料で確定できない状況には検索を追加しません。質問に答える本文は出さず、JSONだけ返してください。";
-const BOOKING_SCHEDULE_INSTRUCTIONS = "電話とアプリの受付時間をそれぞれ照合し、平日の受付に土曜日と日曜日は含めません。質問に駅周辺や地区の指定があれば、対応する路線名と運行曜日を回答の冒頭で伝えてから予約方法を案内します。";
+const EVIDENCE_REVIEW_INSTRUCTIONS = "回答を作る前に、質問と取得資料を照合してください。対象、年や時期、金額、例外、質問された複数の項目を確認します。質問を裏づける資料IDだけを source_ids に入れます。案内を左右する条件が資料にある場合は、該当する短い原文を excerpts に入れます。複数の用件ではそれぞれの根拠を選び、地点・曜日・受付方法などで異なる条件を混同しません。登録資料で調べられそうな重要な項目が未確認の場合だけ、その項目を missing_fact、検索に使える具体的な固有名と項目を query に書きます。当日の混雑や空席など登録資料で確定できない状況には検索を追加しません。質問に答える本文は出さず、JSONだけ返してください。";
+const BOOKING_SCHEDULE_INSTRUCTIONS = "運行日と電話・アプリの受付日は別々に確認します。地名や駅が指定されていれば、最初に適用される路線名と運行曜日を資料の表記で答えます。次に電話で当日予約できるかを先に答え、事前予約の方法とアプリの受付時間を区別します。平日の電話受付に土日を含めません。";
 
 const ACTIONS = ["answer", "clarify", "insufficient", "search"] as const;
 type Action = (typeof ACTIONS)[number];
@@ -73,6 +73,7 @@ interface Passage extends Pick<SourceRecord, "id" | "title" | "text" | "source" 
 
 interface EvidenceReview {
   source_ids: string[];
+  excerpts?: { source_id: string; text: string }[];
   missing_fact?: string;
   query?: string;
 }
@@ -200,6 +201,14 @@ function asksBookingSchedule(wording: string) {
   return /平日|休日|曜日|土曜|日曜|祝日|土日/.test(text) && /電話|あぷり/.test(text) && /予約|受付|受け付/.test(text);
 }
 
+function bookingArea(wording: string, source?: SourceRecord) {
+  if (!source || !asksBookingSchedule(wording) || !normalize(wording).includes("いぐばす")) return undefined;
+  const area = /^([^。]+?)周辺は、日曜日を含め毎日運行する「([^」]+)」のエリア。/.exec(source.text);
+  if (area && normalize(wording).includes(normalize(area[1]))) {
+    return { name: area[2], sentence: `${area[1]}周辺は、通常は毎日運行する「${area[2]}」のエリアです。` };
+  }
+}
+
 function omitUnaskedDailySchedule(answer: string, wording: string) {
   const timing = /営業|開館|休館|閉館|開[いくきけ]|休み|定休日|何時|いつ|何曜日|日中|午前|午後|夕方|今から|今朝|今夜|今日|本日|明日|当日|きょう|あした|現在|平日|休日|週末|祝日|[月火水木金土日]曜|\d+[月日時]/;
   if (timing.test(normalize(wording))) return answer;
@@ -258,7 +267,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(state.search_wording ? [SEARCH_WORDING_INSTRUCTIONS] : []),
       ...(state.quoted_subject ? ["quoted_subject は質問された固有名です。この名称や確認済みの別名が出る資料を探します。異なる名称の資料から創刊日、公開年、料金などを転用しません。"] : []),
       ...(state.resolved_name ? ["resolved_name は資料検索に使った正式表記です。資料で同じ対象を確認できたら、回答の最初に正式表記を書きます。"] : []),
-      ...(state.evidence_review ? ["evidence_review は取得済みの資料の照合結果です。source_ids は根拠として確認する候補です。missing_fact と query があり、質問の重要な項目が観察から確認できず、検索枠が残っていれば、そこに絞って追加検索します。"] : []),
+      ...(state.evidence_review ? ["evidence_review は取得済みの資料の照合結果です。source_ids は資料候補、excerpts は質問の条件に対応する資料の原文です。回答するときは質問された用件それぞれと、結論を左右する条件を原文と照合し、使った資料IDを挙げます。missing_fact と query があり、質問の重要な項目が観察から確認できず、検索枠が残っていれば、そこに絞って追加検索します。"] : []),
       ...(state.requested_event_year ? ["requested_event_year は利用者が尋ねた開催年です。例年の時期や別の年の予定から開催日を決めず、指定年の資料で会場や日付を確認します。period は資料の対象期間です。"] : []),
       ...(state.requested_event_after ? ["requested_event_after は次回の開催を確認する基準日です。対象の行事がその日以降に開かれることを資料で確認します。過去の開催日や例年の時期を次回の日程として使いません。"] : []),
       ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。回答本文には通常時の情報だけを書きます。当日・将来の状況が確認できない旨はアプリが追記します。"] : []),
@@ -319,9 +328,11 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(prior_passages ?? []),
       ...observations.flatMap((observation) => observation.passages),
     ].map((passage) => [passage.id, passage])).values()];
-    const ids = new Set(passages.map(({ id }) => id));
+    const byId = new Map(passages.map((passage) => [passage.id, passage]));
+    const wording = question + " " + (follow_up?.reply ?? "");
+    const reviewDates = asksCollectionDate(wording);
     const notes = [EVIDENCE_REVIEW_INSTRUCTIONS];
-    if (asksBookingSchedule(question + " " + (follow_up?.reply ?? ""))) notes.push(BOOKING_SCHEDULE_INSTRUCTIONS);
+    if (asksBookingSchedule(wording)) notes.push(BOOKING_SCHEDULE_INSTRUCTIONS);
     if (resolved_name) notes.push("登録済みの名称だけを尋ねられた場合は、その名称で確認できる概要を照合します。同名の資料が複数あれば、確認できる意味ごとに扱います。");
     const review = await chatJson({
       model, signal, timeoutMs: Math.min(timeoutMs ?? EVIDENCE_REVIEW_TIMEOUT, EVIDENCE_REVIEW_TIMEOUT),
@@ -332,20 +343,34 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       format: {
         type: "object",
         properties: {
-          source_ids: { type: "array", items: { type: "string", enum: [...ids] } },
+          source_ids: { type: "array", items: { type: "string", enum: [...byId.keys()] } },
+          excerpts: { type: "array", maxItems: 3, items: {
+            type: "object", properties: {
+              source_id: { type: "string", enum: [...byId.keys()] }, text: { type: "string" },
+            }, required: ["source_id", "text"], additionalProperties: false,
+          } },
           missing_fact: { type: "string" }, query: { type: "string" },
         },
         required: ["source_ids"], additionalProperties: false,
       },
     });
     if (!Array.isArray(review.source_ids)) throw new OllamaResponseError("AIから資料の確認結果を読み取れませんでした。");
-    const sourceIds = [...new Set(review.source_ids.filter((id): id is string => typeof id === "string" && ids.has(id)))];
+    const sourceIds = [...new Set(review.source_ids.filter((id): id is string => typeof id === "string" && byId.has(id)))];
+    const excerpts = Array.isArray(review.excerpts) ? review.excerpts.slice(0, 3).flatMap((value) => {
+      if (!isObject(value)) return [];
+      const source_id = trimString(value.source_id);
+      const text = trimString(value.text);
+      return sourceIds.includes(source_id) && text.length >= 8 && text.length <= 140 &&
+        byId.get(source_id)?.text.includes(text) ? [{ source_id, text }] : [];
+    }) : [];
+    const confirmed = { source_ids: sourceIds, ...(excerpts.length ? { excerpts } : {}) };
     const missing = trimString(review.missing_fact);
     const query = trimString(review.query);
     const noGap = /^(?:(?:特に)?(?:なし|無し|ありません)|不要|該当なし|none|null|n\/a)[。.]?$/i;
-    return missing && query && !noGap.test(missing) && !noGap.test(query) && [...query].length <= 400
-      ? { source_ids: sourceIds, missing_fact: [...compactText(missing)].slice(0, 60).join(""), query }
-      : { source_ids: sourceIds };
+    const unaskedCollectionDate = !reviewDates && COLLECTION_DATE.test(normalize(missing));
+    return missing && query && !unaskedCollectionDate && !noGap.test(missing) && !noGap.test(query) && [...query].length <= 400
+      ? { ...confirmed, missing_fact: [...compactText(missing)].slice(0, 60).join(""), query }
+      : confirmed;
   };
   return decide;
 }
@@ -616,7 +641,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       }))
       : undefined;
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
-    const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion
+    const area = bookingArea(queryText, evidence.get("md-igu-bus"));
+    const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion && !area
       ? streamGroundedAnswer(evidence, onDelta, requiresSubjectEvidence ? supportsRequestedSubject : undefined) : undefined;
     const decisionState = referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
@@ -743,7 +769,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         return { action, answer: dates.join("\n\n"), sources, pending: null };
       }
       if (answer && !calendarQuestion && sources.some(supportsRequestedSubject)) {
-        return { action, answer: mixedQuestion ? `${answer}\n\n${mixedQuestion.notice}` : answer, sources, pending: null };
+        const scopedAnswer = area && sources.some(({ id }) => id === "md-igu-bus") && !answer.includes(area.name)
+          ? `${area.sentence}\n\n${answer}` : answer;
+        return { action, answer: mixedQuestion ? `${scopedAnswer}\n\n${mixedQuestion.notice}` : scopedAnswer, sources, pending: null };
       }
     }
     if (action === "insufficient") insufficientReason = decision.reason;

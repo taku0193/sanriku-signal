@@ -60,7 +60,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   const recentTurns = useRef<QuestionAndAnswer[]>([]);
   const focusAfterRoute = useRef(false);
   const focusNextAnswer = useRef(false);
-  const scrollAfterRender = useRef<"bottom" | "result" | "keep" | "top" | null>(null);
+  const scrollAfterRender = useRef<"result" | "keep" | "top" | null>(null);
   const previousComposer = useRef<DOMRect | null>(null);
 
   function readRoute(focus = false) {
@@ -124,7 +124,6 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     scrollAfterRender.current = null;
     const region = scrollRegion.current;
     if (region && scrolling) {
-      if (scrolling === "bottom") region.scrollTop = region.scrollHeight;
       if (scrolling === "result") region.scrollTop = latestScrollTop(region);
       if (scrolling === "top") region.scrollTop = 0;
       updateJumpLatest();
@@ -151,7 +150,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
 
   function latestScrollTop(region: HTMLElement): number {
     const bottom = region.scrollHeight - region.clientHeight;
-    const result = conversation.current?.lastElementChild?.querySelector(".result-ready");
+    const result = conversation.current?.lastElementChild?.querySelector(".message-main");
     if (!result) return bottom;
     const start = region.scrollTop + result.getBoundingClientRect().top - region.getBoundingClientRect().top;
     return Math.max(0, Math.min(bottom, start - 12));
@@ -182,7 +181,9 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
   }
 
   function updateTurn(id: number, change: Partial<Pick<Turn, "stage" | "searchDetail" | "preview" | "result" | "failure">>) {
-    scrollAfterRender.current = bottomIsVisible() ? (change.result ? "result" : "bottom") : "keep";
+    const region = scrollRegion.current;
+    const nearAnswerStart = !region || Math.abs(latestScrollTop(region) - region.scrollTop) < 80;
+    scrollAfterRender.current = nearAnswerStart ? "result" : "keep";
     setTurns((current) => current.map((turn) => turn.id === id ? { ...turn, ...change } : turn));
   }
 
@@ -238,7 +239,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
     const lastTurn = conversation.current?.lastElementChild;
     const readingPast = region && lastTurn && !bottomIsVisible() &&
       lastTurn.getBoundingClientRect().top > region.getBoundingClientRect().top;
-    scrollAfterRender.current = readingPast ? "keep" : "bottom";
+    scrollAfterRender.current = readingPast ? "keep" : "result";
     setTurns((current) => [...current, { id, question: query, followUpQuestion: currentPending?.question,
       stage: "planning", preview: "", result: null, failure: null }]);
     setDraft("");
@@ -262,9 +263,7 @@ export default function App({ offlineData }: { offlineData?: OfflineData }) {
           }
         });
       if (active.current !== controller) return;
-      if (result.mode === "ai" && result.action === "answer") await preview.complete(result.answer);
       controller.signal.throwIfAborted();
-      if (active.current !== controller) return;
       updateTurn(id, { result });
       setPending(result.pending ?? null);
       if (result.mode === "ai" && result.action === "answer") {

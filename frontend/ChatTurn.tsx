@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import AnswerSources, { linkFor } from "./AnswerSources";
 import AnswerText from "./AnswerText";
 import { actionFacts } from "./actionFacts";
 import GuideActionCard from "./GuideActionCard";
@@ -11,16 +12,6 @@ const progressLabels: Record<ProgressStage, string> = {
   reviewing: "見つけた資料を確認しています",
   generating: "回答をまとめています",
 };
-
-function linkFor(value?: string): string | undefined {
-  if (!value) return;
-  try {
-    const url = new URL(value);
-    if (url.protocol === "https:" || url.protocol === "http:") return url.href;
-  } catch {
-    // URLを開けない場合も出典名を表示する。
-  }
-}
 
 interface ChatTurnProps {
   turn: Turn;
@@ -37,6 +28,9 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
   const facts = !nextAction && (result?.action === "answer" || (result?.action === "search" && !result.notice))
     ? museumFacts(turn.question, sources) : undefined;
   const hasCard = Boolean(nextAction || facts);
+  const waiting = !result && !turn.failure;
+  const streaming = waiting && Boolean(turn.preview);
+  const responseText = result?.answer ?? turn.failure?.partial ?? turn.preview;
   const photos = result?.photos ?? [];
   const copyText = result?.mode === "ai" ? result.answer : result?.prompt ?? "";
   const [copyStatus, setCopyStatus] = useState("");
@@ -66,7 +60,7 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
   const rowClass = [
     "message-main",
     result && "result-ready",
-    turn.preview && result?.action === "answer" && "has-streamed",
+    responseText && turn.preview && "has-streamed",
   ].filter(Boolean).join(" ");
 
   return (
@@ -76,34 +70,37 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
         <span className="guide-mark" aria-hidden="true"></span>
         <div className={rowClass}>
           <h2 className="message-label" tabIndex={-1}>やまだ案内</h2>
-          <div className="message-content" aria-live="polite">
-            {result ? (
-              <>
-                {result.notice && <p className="notice">{result.notice}</p>}
-                {nextAction ? <GuideActionCard facts={nextAction} /> : facts ? <MuseumCard facts={facts} /> :
-                  result.answer ? <AnswerText text={result.answer} /> :
-                  result.mode === "search" && <p>質問に関連する資料が見つかりました。</p>}
-                {onRetry && <button type="button" className="quiet-button retry-button" onClick={onRetry}>AI回答を再試行</button>}
-              </>
-            ) : turn.failure ? (
-              <>
-                {turn.failure.partial && <AnswerText text={turn.failure.partial} />}
-                <p className={turn.failure.stopped ? "stopped" : "message-error"} role={turn.failure.stopped ? "status" : "alert"}>
-                  {turn.failure.message}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="message-status">
-                  <p>{progressLabels[stage]}</p>
-                  {searchDetail && (stage === "searching" || stage === "reviewing") &&
-                    <p className="progress-detail">{searchDetail}</p>}
-                  <span className="progress-track" aria-hidden="true"></span>
-                </div>
-                <p className="streaming-answer" aria-hidden="true" hidden={!turn.preview}>{turn.preview}</p>
-              </>
+          <div className="message-content">
+            <span className="visually-hidden" role="status">
+              {result ? (result.action === "clarify" ? "確認の質問があります" : "結果を表示しました") :
+                streaming ? "回答を表示しています" : waiting ? progressLabels[stage] : ""}
+            </span>
+            {result?.notice && <p className="notice">{result.notice}</p>}
+            {nextAction ? <GuideActionCard facts={nextAction} /> : facts && <MuseumCard facts={facts} />}
+            {responseText && (
+              <div className={streaming ? "answer-prose streaming-answer" : "answer-prose"}
+                aria-hidden={streaming || undefined}>
+                <AnswerText text={responseText} streaming={streaming || turn.failure?.stopped} />
+              </div>
             )}
+            {result?.mode === "search" && !hasCard && !responseText && <p>質問に関連する資料が見つかりました。</p>}
+            {waiting && !streaming && (
+              <div className="message-status">
+                <p>{progressLabels[stage]}</p>
+                {searchDetail && (stage === "searching" || stage === "reviewing") &&
+                  <p className="progress-detail">{searchDetail}</p>}
+                <span className="progress-track" aria-hidden="true"></span>
+              </div>
+            )}
+            {turn.failure && (
+              <p className={turn.failure.stopped ? "stopped" : "message-error"} role={turn.failure.stopped ? "status" : "alert"}>
+                {turn.failure.message}
+              </p>
+            )}
+            {onRetry && <button type="button" className="quiet-button retry-button" onClick={onRetry}>AI回答を再試行</button>}
           </div>
+
+          <AnswerSources sources={sources} direct={!hasCard && result?.mode === "ai"} expanded={result?.mode === "search" && !hasCard} />
 
           {photos.length > 0 && (
             <div className="answer-photos">
@@ -121,36 +118,6 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
                 </figure>
               ))}
             </div>
-          )}
-
-          {sources.length > 0 && (
-            <details className="sources" open={result?.mode === "search" && !hasCard}>
-              <summary>出典 {sources.length} 件</summary>
-              <div className="sources-list">
-                {sources.map((source, index) => {
-                  const link = linkFor(source.url);
-                  const excerpt = source.text?.replace(/\n\s*\|\s*\n/g, " ").replace(/\s+/g, " ").trim();
-                  return (
-                    <article key={index} className="source">
-                      <h3>{source.title}</h3>
-                      {excerpt && <p className="source-excerpt">{excerpt}</p>}
-                      <p className="source-detail">
-                        {link ? <a href={link} target="_blank" rel="noopener">{source.source}</a> : source.source}
-                        {source.published && <> · 掲載日 {source.published}</>}
-                        {source.checked && <> · 確認日 {source.checked}</>}
-                      </p>
-                    </article>
-                  );
-                })}
-              </div>
-            </details>
-          )}
-
-          {hasCard && result?.answer && (
-            <details className="sources full-answer">
-              <summary>回答の全文</summary>
-              <div className="message-content full-answer-body"><AnswerText text={result.answer} /></div>
-            </details>
           )}
 
           {copyText && (

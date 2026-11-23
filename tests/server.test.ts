@@ -138,6 +138,24 @@ test("通常料金に出典を付け、当日の混雑を確認できる範囲�
   assert.equal(result.sources[0].id, "museum-fees");
 });
 
+test("出典で確認したいぐバスの路線と曜日を予約案内に添える", async () => {
+  const station = "陸中山田駅";
+  const source = records.find(({ id }) => id === "md-igu-bus")!;
+  const makeAnswer = (question: string, hits: typeof records) => runTurn(question, async (state) => {
+    if (!state.observations.length) return {
+      action: "search", target: "official_documents", query: "いぐバス 予約",
+    };
+    return { action: "answer", sources: [hits[0].id], answer: "日曜の電話予約はできません。アプリは24時間受付です。" };
+  }, async () => ({ records: hits, mode: "keyword" }));
+  const question = (location: string) => `${location}周辺で日曜にいぐバスを電話予約できる？`;
+  const result = await makeAnswer(question(station), [source]);
+  assert.match(result.answer, /^陸中山田駅周辺は、通常は毎日運行する「まちなか線」のエリアです。/);
+  assert.deepEqual(result.sources, [source]);
+  assert.doesNotMatch((await makeAnswer(question("織笠駅"), [source])).answer, /まちなか線/);
+  const otherSource = { ...source, id: "other" };
+  assert.doesNotMatch((await makeAnswer(question(station), [otherSource])).answer, /まちなか線/);
+});
+
 test("前年の祭りの案内を翌年の日程として引用しない", async () => {
   const saved = records.find(({ id }) => id === "md-yamada-festival-2026")!;
   assert.deepEqual(saved.period, { from: "2026-09-19", through: "2026-09-21" });
