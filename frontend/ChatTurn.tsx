@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import AnswerSections from "./AnswerSections";
 import AnswerSources, { linkFor } from "./AnswerSources";
 import AnswerText from "./AnswerText";
 import { actionFacts } from "./actionFacts";
@@ -23,9 +24,10 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
   const result = turn.result;
   const { stage, searchDetail } = turn;
   const sources = result?.sources ?? [];
-  const nextAction = result?.action === "answer"
+  const presentation = result?.presentation;
+  const nextAction = !presentation && result?.action === "answer"
     ? actionFacts([turn.followUpQuestion, turn.question].filter(Boolean).join("\n"), sources) : undefined;
-  const facts = !nextAction && (result?.action === "answer" || (result?.action === "search" && !result.notice))
+  const facts = !presentation && !nextAction && (result?.action === "answer" || (result?.action === "search" && !result.notice))
     ? museumFacts(turn.question, sources) : undefined;
   const hasCard = Boolean(nextAction || facts);
   const waiting = !result && !turn.failure;
@@ -77,7 +79,7 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
             </span>
             {result?.notice && <p className="notice">{result.notice}</p>}
             {nextAction ? <GuideActionCard facts={nextAction} /> : facts && <MuseumCard facts={facts} />}
-            {responseText && (
+            {presentation ? <AnswerSections presentation={presentation} sources={sources} /> : responseText && (
               <div className={streaming ? "answer-prose streaming-answer" : "answer-prose"}
                 aria-hidden={streaming || undefined}>
                 <AnswerText text={responseText} streaming={streaming || turn.failure?.stopped} />
@@ -100,7 +102,8 @@ export default function ChatTurn({ turn, onRestore, onRetry }: ChatTurnProps) {
             {onRetry && <button type="button" className="quiet-button retry-button" onClick={onRetry}>AI回答を再試行</button>}
           </div>
 
-          <AnswerSources sources={sources} direct={!hasCard && result?.mode === "ai"} expanded={result?.mode === "search" && !hasCard} />
+          <AnswerSources sources={sources} direct={!presentation && !hasCard && result?.mode === "ai"}
+            expanded={result?.mode === "search" && !hasCard} label={presentation ? "根拠の抜粋" : undefined} />
 
           {photos.length > 0 && (
             <div className="answer-photos">

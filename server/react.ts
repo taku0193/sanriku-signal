@@ -1,4 +1,4 @@
-import type { Pending, ProgressStage, QuestionAndAnswer } from "../frontend/types.js";
+import type { AnswerPresentation, Pending, ProgressStage, QuestionAndAnswer } from "../frontend/types.js";
 import { mentionsSubject, normalize, quotedSubject } from "../shared/knowledge.js";
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
@@ -109,6 +109,7 @@ interface TurnState {
   quoted_subject?: string;
   resolved_name?: string;
   reference_question?: string;
+  answer_layout?: "comparison" | "multiple";
   round_trip_counts?: string[];
   remaining_searches?: number;
   evidence_review?: EvidenceReview;
@@ -138,6 +139,7 @@ interface TurnResult {
   action: Exclude<Action, "search">;
   answer: string;
   sources: SourceRecord[];
+  presentation?: AnswerPresentation;
   pending: Pending | null;
   checkpoint?: SourceRecord[];
 }
@@ -233,13 +235,13 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
     const expandable = state.expandable_source_ids;
     const wording = state.question + " " + (state.follow_up?.reply ?? "");
     const normalizedWording = normalize(wording);
-    const checkConstraints = !state.collection_hints &&
-      /以外|いがい(?:で|の)|を除[くい]|抜きで|が使えない|できない場合/u.test(normalizedWording);
+    const checkConstraints = !state.collection_hints && hasUseConstraint(wording);
     const applyThreshold = /\d+\s*(?:人|名|歳|か月|ヶ月)(?:で|と|に|の|以上|未満)|(?:小学|中学|高校)\d年/.test(normalizedWording);
     const missingRequirement = /(?:用意|準備|持参|提示|提出)できな(?:い|く)/.test(normalizedWording);
     const asksReservation = /予約(?:が|は)?(?:必要|必須|いり|いる)|要予約/.test(normalizedWording);
     const stream = checkConstraints ? undefined : onContent;
     const finalWithEvidence = actions.includes("answer") && !actions.includes("search");
+    const sectioned = state.answer_layout && !regularClosingQuestion(wording) && actions.includes("answer");
     const properties = {
       action: { type: "string", enum: actions },
       target: { type: "string", enum: [
@@ -261,6 +263,13 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       answer: { type: "string" },
       other_answer: { type: "string" },
       sources,
+      ...(sectioned ? {
+        sections: { type: "array", maxItems: 4, items: {
+          type: "object", properties: {
+            label: { type: "string" }, text: { type: "string" }, source_ids: sources,
+          }, required: ["label", "text", "source_ids"], additionalProperties: false,
+        } },
+      } : {}),
     };
     const instructions = [
       INSTRUCTIONS, TOOL_INSTRUCTIONS, ...(checkConstraints ? [CONSTRAINT_INSTRUCTIONS] : []),
@@ -270,7 +279,13 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       ...(state.evidence_review ? ["evidence_review は取得済みの資料の照合結果です。source_ids は資料候補、excerpts は質問の条件に対応する資料の原文です。回答するときは質問された用件それぞれと、結論を左右する条件を原文と照合し、使った資料IDを挙げます。missing_fact と query があり、質問の重要な項目が観察から確認できず、検索枠が残っていれば、そこに絞って追加検索します。"] : []),
       ...(state.requested_event_year ? ["requested_event_year は利用者が尋ねた開催年です。例年の時期や別の年の予定から開催日を決めず、指定年の資料で会場や日付を確認します。period は資料の対象期間です。"] : []),
       ...(state.requested_event_after ? ["requested_event_after は次回の開催を確認する基準日です。対象の行事がその日以降に開かれることを資料で確認します。過去の開催日や例年の時期を次回の日程として使いません。"] : []),
-      ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。回答本文には通常時の情報だけを書きます。当日・将来の状況が確認できない旨はアプリが追記します。"] : []),
+      ...(state.reference_question ? ["reference_question は、当日・将来の状況とは別に尋ねられた通常時の項目です。通常時の資料を先に探し、確認できたことを action=answer で出典とともに答えます。answer は reference_question の項目と適用条件だけを一文で答えます。閉館時刻なら開館時刻、売店、駐車場、道路休憩施設の案内は省きます。sources にはその時刻や料金が載っている資料IDだけを入れます。混雑見込みや確認できない旨は書きません。当日・将来の状況を確認できない旨はアプリが表示します。"] : []),
+      ...(sectioned ? [
+        "質問された項目ごとに、短い見出し label、質問に答える短い本文 text、直接の根拠に使う取得済み資料ID source_ids を sections に入れます。結論に必要な項目を省略せず、聞かれていない情報は入れません。資料に複数の対象が出るときは、対象と操作の関係を保ちます。例えば「AとBを本体から外す」を「AからBを外す」に変えません。資料IDは項目に最も直接対応するものを一つ選び、別の条件に別資料が必要なときだけ複数選びます。各 section の source_ids の和集合を sources に入れます。検索や聞き返しでは sections を空配列にします。",
+        state.answer_layout === "comparison"
+          ? "比較では、answer を「通常は〇〇の方が遅く閉まります」のような結論の一文にします。sections に対象ごとの具体的な値と比較に必要な条件を書きます。閉館の比較なら閉館時刻を示し、開館時刻・最終入館・併設店舗・道路休憩施設の案内は尋ねられたときだけ書きます。駅を手がかりに施設を特定した場合は該当する項目に駅との関係とその資料も含めます。比較に必要な資料が足りなければ検索し、検索時の answer は空文字にします。"
+          : "別々の用件を sections に分けます。answer には各用件の結論だけを短く入れます。",
+      ] : []),
       ...(state.round_trip_counts ? ["round_trip_counts は利用者が示した往復回数を片道回数に換算した結果です。資料の上限が片道単位なら換算後の回数に、追加分を足して上限と比べます。"] : []),
       ...(applyThreshold ? ["資料の人数や年齢の境目に利用者の条件を当てはめ、適用される区分を資料の表記で伝えます。団体料金の人数に満たない場合は、資料にあれば1人あたりの通常料金も金額で示します。代替の制度は、その利用条件まで確認できる資料があるときに案内します。"] : []),
       ...(missingRequirement ? ["書類や保証人などの要件を満たせない場合は query に元の手続きの正式名を残し、不足時の手順を探します。通常の要件に加え、代わりの手順や所要日数を確認して案内します。別の手続きの情報は省きます。"] : []),
@@ -285,7 +300,11 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
       format: {
         type: "object",
         properties: stream ? Object.assign({ action: properties.action, sources, answer: properties.answer }, properties) : properties,
-        required: finalWithEvidence ? ["action", "sources"] : ["action"], additionalProperties: false,
+        required: [
+          "action", ...(finalWithEvidence ? ["sources"] : []), ...(sectioned ? ["sections"] : []),
+          ...(sectioned && state.answer_layout === "comparison" ? ["answer"] : []),
+        ],
+        additionalProperties: false,
       },
     });
     if (!ACTIONS.some((action) => action === decision.action)) {
@@ -400,9 +419,28 @@ function collectionHints(wording: string[], district = mentionedDistrict(wording
   return { district, ...(allTypes ? { waste_types: [] } : {}) };
 }
 
+function hasUseConstraint(wording: string) {
+  return /以外|いがい(?:で|の)|を除[くい]|抜きで|が使えない|できない場合/u.test(normalize(wording));
+}
+
+function answerLayout(wording: string): TurnState["answer_layout"] {
+  const text = normalize(wording);
+  if (hasUseConstraint(text)) return undefined;
+  if (/どちら.{0,20}(?:遅|早|安|高|近|遠|長|短)|どっち.{0,20}(?:遅|早|安|高|近|遠|長|短)|比較|比べ/.test(text)) return "comparison";
+  if (!/と|および|あわせて|併せて|それに|(?:\?.*\?|また|それと)/s.test(text)) return undefined;
+  const topics = [
+    /料金|入館料|入場料|いくら|運賃/,
+    /開館|閉館|営業時間|何時まで|最終入館/,
+    /休館日|定休日|何曜日/,
+    /行き方|アクセス|徒歩|最寄り/,
+    /出し方|分別|どう出/,
+  ];
+  return topics.filter((topic) => topic.test(text)).length >= 2 ? "multiple" : undefined;
+}
+
 function referenceQuestion(question: string) {
   const text = normalize(question);
-  if (!/今日|明日|今朝|今夜|現在|当日|今[、の]|午[前後]/.test(text) || !LIVE_STATUS.test(text)) return undefined;
+  if (!/今日|きょう|明日|あした|明後日|あさって|今朝|今夜|現在|当日|今[、の]|午[前後]/.test(text) || !LIVE_STATUS.test(text)) return undefined;
   const reference = /(?:通常|一般|普段)(?:時|の)?[^、。?\n]{0,16}(?:料金|入館料|開館時間|営業時間|閉館時刻|予約締切|受付時間|運行時刻)/.exec(text)?.[0];
   if (!reference) return undefined;
   const status = /混雑|行列|並ん|待ち時間/.test(text) ? "混雑や待ち時間" :
@@ -421,6 +459,86 @@ function citationSources(decision: Record<string, unknown>, evidence: ReadonlyMa
     if (access && !sources.some(isAccess)) sources.push(access);
   }
   return sources;
+}
+
+function formatPresentation(presentation: AnswerPresentation) {
+  return [presentation.conclusion, ...presentation.sections.map(({ label, text }) =>
+    `${label}\n${text}`)].filter(Boolean).join("\n\n");
+}
+
+function omitUnaskedClosingDetails(text: string, wording: string) {
+  if (!/閉館時刻|閉館時間|[遅早]く閉|[遅早]くまで開/.test(wording)) return text;
+  const auxiliary = /(?:最終入館|ラストオーダー|レストラン|併設店舗|道路休憩施設|テイクアウト)/g;
+  return [...sentences.segment(text)].filter(({ segment }) =>
+    [...segment.matchAll(auxiliary)].every(([term]) => wording.includes(term))).map(({ segment }) => segment).join("").trim();
+}
+
+function readSections(value: unknown, evidence: ReadonlyMap<string, SourceRecord>, comparisonWording?: string) {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 4) return undefined;
+  const sections: { label: string; text: string; sourceIds: string[] }[] = [];
+  const labels = new Set<string>();
+  for (const section of value) {
+    if (!isObject(section) || !knownSourceIds(section.source_ids, evidence)) return undefined;
+    const label = compactText(trimString(section.label).replace(/^#+\s*/, ""));
+    const body = trimString(section.text);
+    if (!label || label.length > 60 || !body || body.length > 450 || labels.has(normalize(label))) return undefined;
+    const text = comparisonWording ? omitUnaskedClosingDetails(body, comparisonWording) : body;
+    if (!text) continue;
+    labels.add(normalize(label));
+    sections.push({ label, text, sourceIds: [...new Set(section.source_ids)] });
+  }
+  return sections.length >= 2 ? sections : undefined;
+}
+
+function regularClosingQuestion(wording: string) {
+  if (!/通常|普段/.test(wording) || LIVE_STATUS.test(normalize(wording)) ||
+      /今日|明日|当日|特定|祝日|曜日|連休|休館日|最終入館|レストラン|道路休憩施設|料金|いくら|駐車|行き方|[0-9]+月/.test(wording)) return undefined;
+  if (/遅く閉|遅くまで開/.test(wording)) return "later";
+  if (/早く閉/.test(wording)) return "earlier";
+}
+
+function closingHours(record: SourceRecord) {
+  const label = /^(.+)の(?:開館時間|営業時間)(?:・休館日)?$/.exec(record.title)?.[1];
+  const range = /通常の(?:開館時間|営業時間)は\s*(\d{1,2}):(\d{2})\s*[〜～~-]\s*(\d{1,2}):(\d{2})/.exec(
+    record.text.slice(0, EXCERPT_LIMIT).normalize("NFKC"));
+  if (!label || !range) return undefined;
+  const [openHour, openMinute, hour, minute] = range.slice(1).map(Number);
+  const closing = hour * 60 + minute;
+  if (openHour > 23 || openMinute > 59 || hour > 23 || minute > 59 || closing <= openHour * 60 + openMinute) return undefined;
+  return { label, time: range[3].padStart(2, "0") + ":" + range[4], closing };
+}
+
+function closingComparison(wording: string, evidence: ReadonlyMap<string, SourceRecord>, readSource?: SourceReader) {
+  const mentioned = normalize(wording).replace(/\s+/g, "");
+  const station = /([\p{Script=Han}\p{Script=Katakana}]+駅)が最寄り/u.exec(wording)?.[1];
+  const byFacility = new Map<string, {
+    record: SourceRecord; hours: NonNullable<ReturnType<typeof closingHours>>; anchor: SourceRecord; access?: SourceRecord;
+  }>();
+  for (const anchor of evidence.values()) {
+    for (const record of [anchor, ...(readSource?.(anchor) ?? [])]) {
+      const hours = closingHours(record);
+      if (!hours || byFacility.has(hours.label)) continue;
+      const exactName = [hours.label, ...(record.keywords ?? [])].some((name) =>
+        name.length >= 3 && mentioned.includes(normalize(name).replace(/\s+/g, "")));
+      const access = station && [...evidence.values()].find((item) =>
+        item.url === record.url && item.text.slice(0, EXCERPT_LIMIT).includes(station) &&
+        /徒歩|隣接|最寄り/.test(item.text.slice(0, EXCERPT_LIMIT)));
+      if (exactName || access) byFacility.set(hours.label, { record, hours, anchor, access: access || undefined });
+    }
+  }
+  return byFacility.size === 2 ? [...byFacility.values()] : undefined;
+}
+
+function referenceAnswer(answer: string) {
+  return [...sentences.segment(answer)].map(({ segment }) => {
+    if (!LIVE_STATUS.test(normalize(segment))) return segment;
+    const separator = /(?:(?:です|ます)(?:が|けれど)?[、，]?|ものの[、，]?|[、，])\s*(?=(?:今日|きょう|明日|あした|明後日|あさって|当日|現在|混雑|行列|空席|空き|待ち時間|予約状況))/.exec(segment);
+    if (!separator) return "";
+    const firstClause = segment.slice(0, separator.index).trim();
+    if (LIVE_STATUS.test(normalize(firstClause)) || !/(?:料金|円|時[刻間]?|まで|締切)/.test(firstClause)) return "";
+    const verb = /^(?:です|ます)/.exec(separator[0])?.[0];
+    return firstClause + (verb ?? (/です$|ます$/.test(firstClause) ? "" : "です")) + "。\n";
+  }).join("").trim();
 }
 
 function compactText(text: string) {
@@ -541,6 +659,8 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
   state.resolved_name = namedSubject;
   const mixedQuestion = referenceQuestion(queryText);
   state.reference_question = mixedQuestion?.reference;
+  if (!calendarQuestion && !mixedQuestion) state.answer_layout = answerLayout(queryText);
+  const closingOrder = state.answer_layout === "comparison" ? regularClosingQuestion(queryText) : undefined;
   if (queryText.includes("片道")) {
     const counts = [...queryText.matchAll(/(?:^|[^\d.])(\d{1,6})\s*往復/g)]
       .map(([, count]) => `${count}往復は片道${Number(count) * 2}回`);
@@ -642,7 +762,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       : undefined;
     onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
     const area = bookingArea(queryText, evidence.get("md-igu-bus"));
-    const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion && !area
+    const stream = onDelta && actions.includes("answer") && !calendarQuestion && !mixedQuestion && !state.answer_layout && !area
       ? streamGroundedAnswer(evidence, onDelta, requiresSubjectEvidence ? supportsRequestedSubject : undefined) : undefined;
     const decisionState = referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
@@ -659,16 +779,51 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         onAction?.({ action: "review", status: "unavailable", source_ids: [] });
       }
     }
-    let decision: Awaited<ReturnType<Decider>>;
-    try {
-      decision = await decide(decisionState, actions, signal, stream);
-    } catch (error) {
-      if (!(error instanceof OllamaResponseError) || retriedResponse) throw error;
-      signal?.throwIfAborted();
-      retriedResponse = true;
-      onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
-      decision = await decide(decisionState, actions, signal);
+    const compared = closingOrder ? closingComparison(queryText, evidence, readSource) : undefined;
+    if (compared?.every(({ record }) => evidence.has(record.id) && supportsRequestedSubject(record))) {
+      const [first, second] = compared;
+      const wantLater = closingOrder === "later";
+      const winner = (wantLater ? first.hours.closing > second.hours.closing : first.hours.closing < second.hours.closing) ? first : second;
+      const conclusion = first.hours.closing === second.hours.closing ? "通常の閉館時刻は同じです。" :
+        `通常は${winner.hours.label}の方が${wantLater ? "遅く" : "早く"}閉まります。`;
+      const sources: SourceRecord[] = [];
+      const presentation = { conclusion, sections: compared.map(({ hours, record, access }) => {
+        const sourceIndexes = [sources.length];
+        sources.push(record);
+        let text = `通常の閉館は${hours.time}です。`;
+        if (access) {
+          sourceIndexes.push(sources.length);
+          sources.push(access);
+          const route = [...sentences.segment(access.text.slice(0, EXCERPT_LIMIT))]
+            .map(({ segment }) => segment.trim()).find((line) => line.includes("駅") && /徒歩|隣接|最寄り/.test(line));
+          if (route) text += ` ${route}`;
+        }
+        return { label: hours.label, text, sourceIndexes };
+      }) };
+      onAction?.({ action: "answer" });
+      return { action: "answer", answer: formatPresentation(presentation), presentation, sources, pending: null };
     }
+    const missingHours = compared?.find(({ record }) => !evidence.has(record.id));
+    let decision: Awaited<ReturnType<Decider>>;
+    if (missingHours && actions.includes("search") && state.expandable_source_ids?.includes(missingHours.anchor.id)) {
+      decision = {
+        action: "search", target: "source_details", source_id: missingHours.anchor.id,
+        query: "通常の開館時間・閉館時刻", missing_fact: missingHours.hours.label + "の閉館時刻",
+      };
+    } else if (compared) {
+      decision = { action: "insufficient", reason: "missing_evidence" };
+    } else {
+      try {
+        decision = await decide(decisionState, actions, signal, stream);
+      } catch (error) {
+        if (!(error instanceof OllamaResponseError) || retriedResponse) throw error;
+        signal?.throwIfAborted();
+        retriedResponse = true;
+        onProgress?.(state.observations.length ? "reviewing" : "planning", searchDetail);
+        decision = await decide(decisionState, actions, signal);
+      }
+    }
+
     const action = actions.find((allowed) => allowed === decision.action);
     if (!action) break;
 
@@ -752,7 +907,10 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
 
     onAction?.({ action });
     const answer = trimString(decision.answer);
-    const sources = citationSources(decision, evidence, wording.join("\n"));
+    const sections = action === "answer" && !calendarQuestion && !area && state.answer_layout
+      ? readSections(decision.sections, evidence, state.answer_layout === "comparison" ? queryText : undefined) : undefined;
+    const citation = sections ? { sources: sections.flatMap(({ sourceIds }) => sourceIds) } : decision;
+    const sources = citationSources(citation, evidence, wording.join("\n"));
     if (ambiguity) return clarify(`「${ambiguity.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", ambiguity.district);
     if (action === "clarify" && decision.field === "district" && canClarifyDistrict) {
       return clarify("山田町内のどの地区か教えてください。", "district", hint);
@@ -768,10 +926,28 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         if (additional && dates.length < sources.length) dates.push(additional);
         return { action, answer: dates.join("\n\n"), sources, pending: null };
       }
-      if (answer && !calendarQuestion && sources.some(supportsRequestedSubject)) {
+      if ((answer || sections) && !calendarQuestion && sources.some(supportsRequestedSubject)) {
         const scopedAnswer = area && sources.some(({ id }) => id === "md-igu-bus") && !answer.includes(area.name)
           ? `${area.sentence}\n\n${answer}` : answer;
-        return { action, answer: mixedQuestion ? `${scopedAnswer}\n\n${mixedQuestion.notice}` : scopedAnswer, sources, pending: null };
+        if (mixedQuestion) {
+          const confirmed = omitUnaskedClosingDetails(referenceAnswer(scopedAnswer), queryText);
+          if (!confirmed) break;
+          const presentation: AnswerPresentation = { sections: [
+            { label: mixedQuestion.reference, text: confirmed, sourceIndexes: sources.map((_, index) => index) },
+            { label: "確認できない情報", text: mixedQuestion.notice, sourceIndexes: [] },
+          ] };
+          return { action, answer: formatPresentation(presentation), presentation, sources, pending: null };
+        }
+        const conclusion = state.answer_layout === "comparison" && sections
+          ? sentences.segment(scopedAnswer).containing(0)?.segment.trim() || undefined : undefined;
+        const presentation: AnswerPresentation | undefined = sections && {
+          ...(conclusion ? { conclusion } : {}),
+          sections: sections.map(({ label, text, sourceIds }) => ({
+            label, text, sourceIndexes: sourceIds.map((id) => sources.findIndex((source) => source.id === id)),
+          })),
+        };
+        return { action, answer: presentation ? formatPresentation(presentation) : scopedAnswer,
+          ...(presentation ? { presentation } : {}), sources, pending: null };
       }
     }
     if (action === "insufficient") insufficientReason = decision.reason;

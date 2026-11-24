@@ -20,23 +20,85 @@
     "category": "観光",
     "question": "鯨と海の科学館と道の駅やまだは、通常どちらが遅く閉まりますか？",
     "expected_answer": "科学館は17:00、道の駅やまだ おいすたは18:00に閉館し、おいすたの方が遅い。",
-    "required_patterns": ["(?:17[:時]00|17時|午後\\s*5時)", "(?:18[:時]00|18時|午後\\s*6時)", "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"],
+    "required_patterns": [
+      "(?:17[:時]00|17時|午後\\s*5時)",
+      "(?:18[:時]00|18時|午後\\s*6時)",
+      "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"
+    ],
     "required_sources": {
       "museum-hours": "https://yamada-kujirakan.jp/facility/",
       "oisuta-hours": "https://yamada-oisuta.jp/"
-    }
+    },
+    "presentation": {
+      "section_count": 2,
+      "conclusion_pattern": "(?:道の駅やまだ|おいすた).{0,15}(?:方|ほう)が遅",
+      "sections": [
+        {
+          "patterns": [
+            "鯨と海の科学館",
+            "17(?:時|:00)"
+          ],
+          "source_ids": [
+            "museum-hours"
+          ]
+        },
+        {
+          "patterns": [
+            "(?:道の駅やまだ|おいすた)",
+            "18(?:時|:00)"
+          ],
+          "source_ids": [
+            "oisuta-hours"
+          ]
+        }
+      ]
+    },
+    "forbidden_patterns": [
+      "レストラン|ラストオーダー|道路休憩施設"
+    ]
   },
   {
     "id": "compare-by-station",
     "category": "観光",
     "question": "岩手船越駅が最寄りの施設とおいすたは、通常どちらが遅く閉まりますか？",
     "expected_answer": "岩手船越駅が最寄りの施設は鯨と海の科学館。科学館は17:00、おいすたは18:00に閉館し、おいすたの方が遅い。",
-    "required_patterns": ["鯨と海の科学館", "(?:17[:時]00|17時|午後\\s*5時)", "(?:18[:時]00|18時|午後\\s*6時)", "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"],
+    "required_patterns": [
+      "鯨と海の科学館",
+      "(?:17[:時]00|17時|午後\\s*5時)",
+      "(?:18[:時]00|18時|午後\\s*6時)",
+      "(?:おいすた|道の駅やまだ|道の駅山田).{0,35}(?:の\\s*(?:方|ほう)が|が).{0,20}遅|遅く閉まるのは.{0,20}(?:おいすた|道の駅やまだ|道の駅山田)"
+    ],
     "required_sources": {
       "museum-access": "https://yamada-kujirakan.jp/facility/",
       "museum-hours": "https://yamada-kujirakan.jp/facility/",
       "oisuta-hours": "https://yamada-oisuta.jp/"
-    }
+    },
+    "presentation": {
+      "conclusion_pattern": "(?:道の駅やまだ|おいすた).{0,15}(?:方|ほう)が遅",
+      "sections": [
+        {
+          "patterns": [
+            "鯨と海の科学館",
+            "17(?:時|:00)"
+          ],
+          "source_ids": [
+            "museum-hours"
+          ]
+        },
+        {
+          "patterns": [
+            "(?:道の駅やまだ|おいすた)",
+            "18(?:時|:00)"
+          ],
+          "source_ids": [
+            "oisuta-hours"
+          ]
+        }
+      ]
+    },
+    "forbidden_patterns": [
+      "レストラン|ラストオーダー|道路休憩施設"
+    ]
   },
   {
     "id": "pet-bottle-sorting",
@@ -100,11 +162,41 @@
     "category": "観光・くらし",
     "question": "科学館の大人の料金とペットボトルのふたの出し方は？",
     "expected_answer": "科学館の大人料金は300円。ペットボトルのふたはプラスチックに分別する。",
-    "required_patterns": ["(?<![0-9])300\\s*円", "(?:ふた|蓋|キャップ)", "プラスチック"],
+    "required_patterns": [
+      "(?<![0-9])300\\s*円",
+      "(?:ふた|蓋|キャップ)",
+      "プラスチック"
+    ],
     "required_sources": {
       "museum-fees": "https://yamada-kujirakan.jp/facility/",
       "pet-bottles": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
-    }
+    },
+    "presentation": {
+      "section_count": 2,
+      "sections": [
+        {
+          "patterns": [
+            "科学館",
+            "大人.{0,5}300円"
+          ],
+          "source_ids": [
+            "museum-fees"
+          ]
+        },
+        {
+          "patterns": [
+            "ふた|蓋|キャップ",
+            "プラスチック"
+          ],
+          "source_ids": [
+            "pet-bottles"
+          ]
+        }
+      ]
+    },
+    "forbidden_patterns": [
+      "(?:ふた|蓋|キャップ)は[、，]?ラベルを(?:外|はが|剥)"
+    ]
   },
   {
     "id": "rainy-day-with-child",
@@ -635,9 +727,39 @@
     "id": "known-hours-unknown-crowd",
     "category": "観光",
     "question": "明日の道の駅やまだの混雑状況と、普段の閉館時刻を教えて。",
-    "required_patterns": ["18(?:時|:00)", "混雑.{0,50}(?:確認でき|お答えすることができ|分かり|わかり|記載がな)"],
-    "forbidden_patterns": ["混雑する(?:でしょう|見込み)|混雑します"],
-    "required_sources": {"oisuta-hours": "https://yamada-oisuta.jp/"}
+    "required_patterns": [
+      "18(?:時|:00)",
+      "混雑.{0,50}(?:確認でき|お答えすることができ|分かり|わかり|記載がな)"
+    ],
+    "forbidden_patterns": [
+      "混雑する(?:でしょう|見込み)|混雑します",
+      "混雑.{0,35}(?:確認でき|分かり|わかり|記載がな).{0,60}混雑",
+      "道路休憩施設"
+    ],
+    "required_sources": {
+      "oisuta-hours": "https://yamada-oisuta.jp/"
+    },
+    "presentation": {
+      "section_count": 2,
+      "sections": [
+        {
+          "patterns": [
+            "閉館時刻",
+            "18(?:時|:00)"
+          ],
+          "source_ids": [
+            "oisuta-hours"
+          ]
+        },
+        {
+          "patterns": [
+            "混雑",
+            "確認できません"
+          ],
+          "source_ids": []
+        }
+      ]
+    }
   },
   {
     "id": "nonexistent-aquarium",

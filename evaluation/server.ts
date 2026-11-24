@@ -17,6 +17,11 @@ interface Expectations {
   source_urls?: string[][];
   action?: string;
   first_action?: string;
+  presentation?: {
+    conclusion_pattern?: string;
+    section_count?: number;
+    sections: { patterns: string[]; source_ids: string[] }[];
+  };
 }
 
 interface AnswerCase extends Expectations {
@@ -101,12 +106,23 @@ async function evaluateAnswer(item: AnswerCase) {
       !alternatives.some((url) => sources.some((hit) => hit.url && hit.url.split("#")[0] === url.split("#")[0])));
     const expectsSource = expectedSources.length > 0 || equivalentSources.length > 0 || Boolean(turn.source_urls?.length);
     const expectedAction = turn.action ?? (expectsSource ? "answer" : "insufficient");
-    const passed = previous.action === expectedAction && (!turn.first_action || firstAction === turn.first_action) &&
+    const presentation = previous.presentation;
+    const presented = !turn.presentation || (presentation &&
+      (!turn.presentation.conclusion_pattern ||
+        new RegExp(turn.presentation.conclusion_pattern, "u").test(presentation.conclusion?.normalize("NFKC") ?? "")) &&
+      (turn.presentation.section_count === undefined || presentation.sections.length === turn.presentation.section_count) &&
+      turn.presentation.sections.every((expected) => presentation.sections.some((item) => {
+        const content = `${item.label} ${item.text}`.normalize("NFKC");
+        const linked = item.sourceIndexes.map((index) => sources[index]?.id);
+        return expected.patterns.every((pattern) => new RegExp(pattern, "u").test(content)) &&
+          (expected.source_ids.length ? expected.source_ids.every((id) => linked.includes(id)) : !linked.length);
+      })));
+    const passed = Boolean(presented) && previous.action === expectedAction && (!turn.first_action || firstAction === turn.first_action) &&
       !missingPatterns.length && !forbidden.length && !missingSources.length && !missingSourceUrls.length && (expectsSource || !sources.length) &&
       (!chunks.length || chunks.join("").trimEnd() === previous.answer);
     turns.push({
       question: turn.question, action: previous.action, expectedAction, firstAction, answer: previous.answer,
-      sources, actions, missingPatterns, forbidden, missingSources, missingSourceUrls, passed, millis: performance.now() - started,
+      sources, presentation, presentationPassed: Boolean(presented), actions, missingPatterns, forbidden, missingSources, missingSourceUrls, passed, millis: performance.now() - started,
     });
   }
   const passed = (!expected.follow_up || turns.length === 2) && turns.every((turn) => turn.passed);

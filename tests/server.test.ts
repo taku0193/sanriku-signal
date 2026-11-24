@@ -132,10 +132,78 @@ test("通常料金に出典を付け、当日の混雑を確認できる範囲�
     if (state.question === question) return { action: "insufficient", reason: "live_information" };
     assert.match(state.question, /鯨と海の科学館.*通常料金/);
     assert.doesNotMatch(state.question, /明日|何人/);
-    return { action: "answer", answer: "大人の通常料金は300円です。", sources: ["museum-fees"] };
+    return { action: "answer", answer: "大人の通常料金は300円ですが、明日の混雑は分かりません。", sources: ["museum-fees"] };
   }, keyword, { onDelta: () => assert.fail("確認前の回答を配信した") });
-  assert.match(result.answer, /300円.*混雑や待ち時間.*確認できません/s);
+  assert.match(result.answer, /大人の通常料金は300円です。.*混雑や待ち時間.*確認できません/s);
+  assert.equal((result.answer.match(/混雑/g) ?? []).length, 1);
   assert.equal(result.sources[0].id, "museum-fees");
+  assert.deepEqual(result.presentation?.sections.map(({ sourceIndexes }) => sourceIndexes), [[0], []]);
+});
+
+test("比較の結論と各項目の根拠をまとめ、取得していない引用は表示しない", async () => {
+  const question = "科学館と道の駅やまだではどちらが遅く閉まりますか？";
+  const hits = records.filter(({ id }) => ["museum-hours", "oisuta-hours"].includes(id));
+  const conclusion = "道の駅やまだの方が遅く閉まります。";
+  for (const secondSource of ["oisuta-hours", "missing"] as const) {
+    const result = await runTurn(question, async (state, _actions, _signal, stream) => {
+      assert.equal(state.answer_layout, "comparison");
+      assert.equal(stream, undefined);
+      if (!state.observations.length) return searchMuseum;
+      return {
+        action: "answer", answer: conclusion, sources: ["museum-hours", "oisuta-hours"],
+        sections: [
+          { label: "鯨と海の科学館", text: "通常は17:00まで。", source_ids: ["museum-hours"] },
+          { label: "道の駅やまだ", text: "通常は18:00まで。", source_ids: [secondSource] },
+        ],
+      };
+    }, async () => ({ records: hits, mode: "keyword" }), { onDelta: () => assert.fail("比較を途中で表示した") });
+    assert.equal(result.action, "answer");
+    if (secondSource === "missing") {
+      assert.equal(result.presentation, undefined);
+      assert.equal(result.answer, conclusion);
+    } else {
+      assert.equal(result.presentation?.conclusion, conclusion);
+      assert.deepEqual(result.presentation?.sections.map(({ sourceIndexes }) =>
+        sourceIndexes.map((index) => result.sources[index].id)), [["museum-hours"], ["oisuta-hours"]]);
+      assert.match(result.answer, /^道の駅やまだの方が遅く閉まります。.*17:00.*18:00/s);
+    }
+  }
+});
+
+test("駅名から比較する場合はアクセス案内と閉館時刻を別々に確認する", async () => {
+  const source = (id: string) => records.find((record) => record.id === id)!;
+  const question = "岩手船越駅が最寄りの施設とおいすたは、通常どちらが遅く閉まりますか？";
+  const searchTargets: unknown[] = [];
+  const result = await runTurn(question, async (state) => {
+    if (!state.observations.length) return searchMuseum;
+    return { action: "answer", answer: "科学館は20:00まで開きます。", sources: ["museum-access"] };
+  }, async () => ({ records: [source("museum-access"), source("oisuta-hours")], mode: "keyword" }), {
+    readSource: makeSourceReader(records),
+    onAction: (event) => { if (event.action === "search") searchTargets.push(event.target); },
+  });
+  assert.deepEqual(searchTargets, ["official_documents", "source_details"]);
+  assert.match(result.presentation?.conclusion ?? "", /おいすたの方が遅く閉まります/);
+  assert.match(result.answer, /18:00/);
+  assert.match(result.answer, /17:00/);
+  assert.doesNotMatch(result.answer, /20:00/);
+  const museum = result.presentation?.sections.find(({ label }) => label === "鯨と海の科学館");
+  assert.deepEqual(museum?.sourceIndexes.map((index) => result.sources[index].id), ["museum-hours", "museum-access"]);
+});
+
+test("別々の用件には対応する根拠を付け、共通の前置きを省く", async () => {
+  const result = await runTurn("科学館の大人の料金と空き缶の出し方は？", async (state) => {
+    assert.equal(state.answer_layout, "multiple");
+    if (!state.observations.length) return searchMuseum;
+    return { action: "answer", sections: [
+      { label: "入館料", text: "大人300円です。", source_ids: ["museum-fees"] },
+      { label: "空き缶の出し方", text: "中をすすいで透明か半透明の袋へ。", source_ids: ["md-waste-cans-and-bottles"] },
+    ] };
+  }, async () => ({
+    records: records.filter(({ id }) => ["museum-fees", "md-waste-cans-and-bottles"].includes(id)), mode: "keyword",
+  }));
+  assert.match(result.answer, /入館料\n大人300円.*空き缶の出し方\n中をすすいで/s);
+  assert.equal(result.presentation?.conclusion, undefined);
+  assert.deepEqual(result.presentation?.sections.map(({ sourceIndexes }) => sourceIndexes), [[0], [1]]);
 });
 
 test("出典で確認したいぐバスの路線と曜日を予約案内に添える", async () => {

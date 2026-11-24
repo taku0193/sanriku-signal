@@ -40,11 +40,23 @@ export interface AskInput {
   history: QuestionAndAnswer[];
 }
 
+export interface AnswerSection {
+  label: string;
+  text: string;
+  sourceIndexes: number[];
+}
+
+export interface AnswerPresentation {
+  conclusion?: string;
+  sections: AnswerSection[];
+}
+
 export interface GuideResult {
   mode: "ai" | "search";
   action: "answer" | "clarify" | "insufficient" | "search";
   answer: string;
   sources: Source[];
+  presentation?: AnswerPresentation;
   photos?: Photo[];
   pending?: Pending | null;
   notice?: string;

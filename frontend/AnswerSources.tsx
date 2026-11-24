@@ -22,8 +22,8 @@ function groupSources(sources: Source[]) {
   return [...byUrl.values()];
 }
 
-export default function AnswerSources({ sources, direct, expanded }: {
-  sources: Source[]; direct: boolean; expanded: boolean;
+export default function AnswerSources({ sources, direct, expanded, label = "出典" }: {
+  sources: Source[]; direct: boolean; expanded: boolean; label?: string;
 }) {
   const groups = groupSources(sources);
   if (!groups.length) return null;
@@ -37,7 +37,7 @@ export default function AnswerSources({ sources, direct, expanded }: {
         </a>
       )}
       <details className="sources" open={expanded || undefined}>
-        <summary>出典 {groups.length}件</summary>
+        <summary>{label} {groups.length}件</summary>
         <div className="sources-list">
           {groups.map(({ href, entries }, index) => (
             <article key={href ?? index} className="source">
