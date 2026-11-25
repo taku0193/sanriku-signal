@@ -436,7 +436,7 @@ test("収集日の地区と品目は利用者の言い方から照合する", as
   assert.deepEqual(namedWasteTypes("ペットボトルのキャップ"), ["plastic"]);
   assert.deepEqual(namedWasteTypes("割れた蛍光管とペンキの缶"), ["non_burnable_glass_batteries"]);
 
-  const result = await runTurn("大沢で乾電池と雑誌は2026年12月のいつ出せますか？", async (state, actions) => {
+  const result = await runTurn("大沢で2026年12月に乾電池と雑誌を出せる日は？", async (state, actions) => {
     assert.ok(!actions.includes("clarify"));
     assert.deepEqual(state.collection_hints, {
       district: "大沢", waste_types: ["non_burnable_glass_batteries", "paper_and_hazardous_items"],
@@ -449,6 +449,34 @@ test("収集日の地区と品目は利用者の言い方から照合する", as
   assert.match(result.answer, /乾電池　2026年12月18日（金）/);
   assert.match(result.answer, /水銀血圧計　2026年12月25日（金）/);
   assert.doesNotMatch(result.answer, /・燃やせるごみ　/);
+});
+
+test("年月と品目が明確な収集日の質問は、日程表だけで日付と出典を返せる", async () => {
+  const cases = [
+    ["大沢の雑誌は2026年12月のいつ出せますか？", /雑誌.*2026年12月25日（金）/],
+    ["大沢の乾電池と新聞は2026年12月の何日に出せますか？", /乾電池.*12月18日.*新聞.*12月25日/s],
+    ["大沢の2026年12月のペットボトルの収集日は？", /ペットボトル.*12月8日/],
+  ] as const;
+  for (const [question, expected] of cases) {
+    const actions: string[] = [];
+    const result = await runTurn(question, async () => { throw new OllamaError("AIに接続できませんでした。"); },
+      keyword, { today: "2026-11-25", onAction: ({ action }) => actions.push(action) });
+    assert.equal(result.action, "answer");
+    assert.match(result.answer, expected);
+    assert.deepEqual(result.sources.map(({ id }) => id), ["calendar-2026-osawa"]);
+    assert.deepEqual(actions, ["search", "answer"]);
+  }
+});
+
+test("収集日と一緒に別の用件がある質問は、日程表だけで回答しない", async () => {
+  for (const question of [
+    "大沢の雑誌は2026年12月のいつ出せますか？出し方も教えてください。",
+    "大沢の2026年12月の汚れた紙の収集日は？",
+    "大沢の2026年12月の雑誌以外の収集日は？",
+  ]) {
+    const unavailable = new OllamaError("AIに接続できませんでした。");
+    await assert.rejects(runTurn(question, async () => { throw unavailable; }, keyword), (error) => error === unavailable);
+  }
 });
 
 test("ひらがなの地区名と区番号を照合し、地区の曖昧さを保つ", async () => {
@@ -512,9 +540,7 @@ test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) 
   const server = createGuideServer({
     records, retrieval: "keyword", decide: async (state, _actions, _signal, onContent) => {
       if (state.question.includes("大沢")) {
-        return state.observations.length ? { action: "answer", sources: ["calendar-2026-osawa"], answer: "未照合の日付" } : {
-          action: "search", target: "collection_calendars", district: "大沢", waste_types: ["plastic"],
-        };
+        throw new OllamaError("AIに接続できませんでした。");
       }
       if (!state.observations.length) return searchMuseum;
       const result = { action: "answer", sources: ["museum-fees"], answer: "大人300円です。" };
@@ -556,6 +582,7 @@ test("HTTPで動画の部分配信とNDJSONの回答を返す", async (context) 
     body: JSON.stringify({ question: "大沢の2026年12月のプラスチック収集日は？" }),
   });
   const calendar = await calendarResponse.json() as GuideResult;
+  assert.equal(calendarResponse.status, 200);
   assert.equal(calendar.action, "answer");
   assert.match(calendar.answer, /12月8日（火）.*12月25日（金）/);
   assert.equal(calendar.sources[0].url, undefined);

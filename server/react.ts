@@ -3,7 +3,7 @@ import { mentionsSubject, normalize, quotedSubject } from "../shared/knowledge.j
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import {
-  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, explicitCollectionDates, findCollectionDays,
+  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, collectionMonthTypes, explicitCollectionDates, findCollectionDays,
   fiscalYear, hasCollectionYear, mentionedDistrict, namedWasteTypes, todayInTokyo,
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
@@ -707,6 +707,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     return clarify("どの証明書を受け取る予定ですか？ 住民票の写しや戸籍、税証明など、種類を教えてください。", "condition");
   }
 
+  let directCalendarTypes: WasteType[] | undefined;
   if (calendarQuestion) {
     let dates: ReturnType<typeof explicitCollectionDates>;
     try {
@@ -725,7 +726,10 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       onAction?.({ action: "clarify" });
       return clarify(`「${district.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", district.district);
     }
-    state.collection_hints = collectionHints(wording, district?.district);
+    if (!pending && dates && district) directCalendarTypes = collectionMonthTypes(searchQuestion, district.district);
+    state.collection_hints = directCalendarTypes
+      ? { district: district?.district, waste_types: directCalendarTypes }
+      : collectionHints(wording, district?.district);
   }
 
   const previous = new Map<string, LookupResult>();
@@ -805,7 +809,10 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     }
     const missingHours = compared?.find(({ record }) => !evidence.has(record.id));
     let decision: Awaited<ReturnType<Decider>>;
-    if (missingHours && actions.includes("search") && state.expandable_source_ids?.includes(missingHours.anchor.id)) {
+    const directCalendarSearch = step === 0 && directCalendarTypes !== undefined;
+    if (directCalendarSearch) {
+      decision = { action: "search", target: "collection_calendars" };
+    } else if (missingHours && actions.includes("search") && state.expandable_source_ids?.includes(missingHours.anchor.id)) {
       decision = {
         action: "search", target: "source_details", source_id: missingHours.anchor.id,
         query: "通常の開館時間・閉館時刻", missing_fact: missingHours.hours.label + "の閉館時刻",
@@ -891,6 +898,11 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       event.source_ids = hits.map(({ id }) => id);
       if (found?.mode) event.retrieval = found.mode;
       onAction?.(event);
+      if (directCalendarSearch && hits[0]?.calendar_answer) {
+        signal?.throwIfAborted();
+        onAction?.({ action: "answer" });
+        return { action: "answer", answer: hits[0].calendar_answer, sources: hits, pending: null };
+      }
       state.observations.push({ ...event, passages });
       continue;
     }

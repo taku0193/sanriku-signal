@@ -23,6 +23,33 @@ const WASTE_NAMES: Record<WasteType, RegExp> = {
   oversized: /粗大ごみ/,
 };
 
+const collectionItemTypes = new Map<string, WasteType>([
+  ...(Object.keys(COLLECTION_TYPES) as WasteType[]).flatMap((type) =>
+    COLLECTION_TYPES[type].split("、").map((name) => [normalize(name), type] as const)),
+  ["雑誌", "paper_and_hazardous_items"],
+  ["紙製容器包装", "paper_and_hazardous_items"],
+]);
+const collectionItem = new RegExp(
+  `(${[...collectionItemTypes.keys()].join("|")})(?:\\s*[と、・]\\s*(?=\\S)|$)`, "gy",
+);
+
+const collectionMonth = "[0-9]{4}年\\s*[0-9]{1,2}月";
+const dateThenItems = new RegExp(`^${collectionMonth}の(.+?)(?:の)?(?:収集日|回収日)(?:は(?:いつ(?:ですか)?)?)?$`);
+const itemsThenDate = new RegExp(`^(.+?)は${collectionMonth}の(?:いつ|何日に)出せ(?:ますか|る)$`);
+
+export function collectionMonthTypes(question: string, district: string): WasteType[] | undefined {
+  const text = normalizeDistrict(question.trim()).replace(/[?。]$/, "");
+  if (!text.startsWith(district) || !/^[ので]/.test(text.slice(district.length))) return;
+  const request = text.slice(district.length + 1);
+  const items = (dateThenItems.exec(request) ?? itemsThenDate.exec(request))?.[1].trim();
+  if (!items) return;
+  const matches = [...items.matchAll(collectionItem)];
+  const last = matches.at(-1);
+  if (last && last.index + last[0].length === items.length) {
+    return [...new Set(matches.map(([, name]) => collectionItemTypes.get(name)!))];
+  }
+}
+
 export function namedWasteTypes(phrase: string): WasteType[] {
   const text = normalize(phrase)
     .replace(/ぺっとぼとるの(?:ふた|蓋|きゃっぷ|らべる)/g, "ぷらすちっく")
