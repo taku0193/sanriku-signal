@@ -3,8 +3,8 @@ import { mentionsSubject, normalize, quotedSubject } from "../shared/knowledge.j
 import type { SourceRecord } from "../shared/knowledge.js";
 import { normalizeQuery } from "../shared/query.js";
 import {
-  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, collectionMonthTypes, explicitCollectionDates, findCollectionDays,
-  fiscalYear, hasCollectionYear, mentionedDistrict, namedWasteTypes, todayInTokyo,
+  AmbiguousDistrict, COLLECTION_PERIODS, COLLECTION_TYPES, collectionBounds, collectionRequest, explicitCollectionDates, findCollectionDays,
+  fiscalYear, hasCollectionYear, isCollectionDistrictReply, mentionedDistrict, namedWasteTypes, todayInTokyo,
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
@@ -707,7 +707,7 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     return clarify("どの証明書を受け取る予定ですか？ 住民票の写しや戸籍、税証明など、種類を教えてください。", "condition");
   }
 
-  let directCalendarTypes: WasteType[] | undefined;
+  let directCalendar: ReturnType<typeof collectionRequest>;
   if (calendarQuestion) {
     let dates: ReturnType<typeof explicitCollectionDates>;
     try {
@@ -726,9 +726,14 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       onAction?.({ action: "clarify" });
       return clarify(`「${district.district}」には複数の収集区分があります。区番号や、ごみステーションの目印を教えてください。`, "district", district.district);
     }
-    if (!pending && dates && district) directCalendarTypes = collectionMonthTypes(searchQuestion, district.district);
-    state.collection_hints = directCalendarTypes
-      ? { district: district?.district, waste_types: directCalendarTypes }
+    const districtReply = pending?.field === "district" && district && isCollectionDistrictReply(searchReply, district.district);
+    if (!pending || districtReply) directCalendar = collectionRequest(searchQuestion, pending ? hint : district?.district);
+    if (directCalendar && !district) {
+      onAction?.({ action: "clarify" });
+      return clarify("山田町内のどの地区か教えてください。", "district", hint);
+    }
+    state.collection_hints = directCalendar
+      ? { district: district?.district, waste_types: directCalendar.wasteTypes }
       : collectionHints(wording, district?.district);
   }
 
@@ -809,9 +814,9 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     }
     const missingHours = compared?.find(({ record }) => !evidence.has(record.id));
     let decision: Awaited<ReturnType<Decider>>;
-    const directCalendarSearch = step === 0 && directCalendarTypes !== undefined;
+    const directCalendarSearch = step === 0 ? directCalendar : undefined;
     if (directCalendarSearch) {
-      decision = { action: "search", target: "collection_calendars" };
+      decision = { action: "search", target: "collection_calendars", period: directCalendarSearch.period };
     } else if (missingHours && actions.includes("search") && state.expandable_source_ids?.includes(missingHours.anchor.id)) {
       decision = {
         action: "search", target: "source_details", source_id: missingHours.anchor.id,
@@ -902,6 +907,11 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         signal?.throwIfAborted();
         onAction?.({ action: "answer" });
         return { action: "answer", answer: hits[0].calendar_answer, sources: hits, pending: null };
+      }
+      if (directCalendarSearch && event.status === "not_found") {
+        signal?.throwIfAborted();
+        onAction?.({ action: "insufficient" });
+        return { action: "insufficient", answer: NO_COLLECTION_DATES, sources: [], pending: null };
       }
       state.observations.push({ ...event, passages });
       continue;

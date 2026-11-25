@@ -468,11 +468,57 @@ test("年月と品目が明確な収集日の質問は、日程表だけで日�
   }
 });
 
+test("今日・明日・次回は日本時間で別々の日程を照合する", async () => {
+  const today = todayInTokyo(new Date("2026-11-24T15:01:00Z"));
+  const cases = [
+    ["大沢で今日は燃やせるごみを出せますか？", /燃やせるごみ　2026年11月25日（水）.*午前8時/s],
+    ["明日、大沢で燃やせるごみは出せますか？", /11月26日（木）.*燃やせるごみ　この日の収集予定はありません/s],
+    ["大沢の次の燃やせるごみの日は？", /燃やせるごみ　2026年11月28日（土）/],
+    ["大沢で次の不燃ごみはいつ出せる？", /燃やせないごみ.*2026年12月18日（金）/],
+  ] as const;
+  const unreachableModel: Decider = async () => assert.fail("日程表だけで回答できる");
+  for (const [question, expected] of cases) {
+    const result = await runTurn(question, unreachableModel, keyword, { today });
+    assert.equal(result.action, "answer");
+    assert.match(result.answer, expected);
+    assert.equal(result.sources[0]?.id, "calendar-2026-osawa");
+  }
+
+  const holiday = await runTurn("大沢で明日の燃えるごみの収集はありますか？", unreachableModel, keyword, { today: "2026-12-31" });
+  assert.match(holiday.answer, /2027年1月1日（金）.*1月1日〜3日は収集休止/s);
+  assert.equal(holiday.sources[0]?.id, "calendar-2026-osawa");
+
+  const unpublished = await runTurn("大沢の次回の不燃ごみの収集日は？", unreachableModel, keyword, { today: "2027-03-31" });
+  assert.equal(unpublished.action, "insufficient");
+  assert.match(unpublished.answer, /収集日を確認できません/);
+  assert.deepEqual(unpublished.sources, []);
+});
+
+test("日程表に必要な地区を聞き返し、返答から元の品目と次回の日程を照合する", async () => {
+  const unreachableModel: Decider = async () => assert.fail("地区名の確認と日程表の照合だけで回答できる");
+  const cases = [
+    ["うちの地区の次の燃やせるごみの日は？", /どの地区/, "大沢です", "calendar-2026-osawa", /11月28日（土）/],
+    ["北浜の次の燃やせるごみの日は？", /複数の収集区分/, "4区です", "calendar-2026-yamada-1", /11月26日（木）/],
+  ] as const;
+  for (const [question, clarification, reply, sourceId, expected] of cases) {
+    const first = await runTurn(question, unreachableModel, keyword, { today: "2026-11-25" });
+    assert.equal(first.action, "clarify");
+    assert.match(first.answer, clarification);
+    assert.deepEqual(first.sources, []);
+    const next = await runTurn(reply, unreachableModel, keyword, { today: "2026-11-25", pending: first.pending });
+    assert.equal(next.action, "answer");
+    assert.equal(next.sources[0]?.id, sourceId);
+    assert.match(next.answer, expected);
+  }
+});
+
 test("収集日と一緒に別の用件がある質問は、日程表だけで回答しない", async () => {
   for (const question of [
     "大沢の雑誌は2026年12月のいつ出せますか？出し方も教えてください。",
     "大沢の2026年12月の汚れた紙の収集日は？",
     "大沢の2026年12月の雑誌以外の収集日は？",
+    "大沢の次の雑誌の収集日は？あと、出し方も教えてください。",
+    "大沢の不燃ごみを今日と明日のどちらに出せますか？",
   ]) {
     const unavailable = new OllamaError("AIに接続できませんでした。");
     await assert.rejects(runTurn(question, async () => { throw unavailable; }, keyword), (error) => error === unavailable);

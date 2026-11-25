@@ -26,6 +26,9 @@ const WASTE_NAMES: Record<WasteType, RegExp> = {
 const collectionItemTypes = new Map<string, WasteType>([
   ...(Object.keys(COLLECTION_TYPES) as WasteType[]).flatMap((type) =>
     COLLECTION_TYPES[type].split("、").map((name) => [normalize(name), type] as const)),
+  ["燃えるごみ", "burnable"],
+  ["不燃ごみ", "non_burnable_glass_batteries"],
+  ["燃えないごみ", "non_burnable_glass_batteries"],
   ["雑誌", "paper_and_hazardous_items"],
   ["紙製容器包装", "paper_and_hazardous_items"],
 ]);
@@ -34,20 +37,58 @@ const collectionItem = new RegExp(
 );
 
 const collectionMonth = "[0-9]{4}年\\s*[0-9]{1,2}月";
-const dateThenItems = new RegExp(`^${collectionMonth}の(.+?)(?:の)?(?:収集日|回収日)(?:は(?:いつ(?:ですか)?)?)?$`);
-const itemsThenDate = new RegExp(`^(.+?)は${collectionMonth}の(?:いつ|何日に)出せ(?:ますか|る)$`);
+const nextCollection = "次回の?|次の|つぎの";
+const collectionDay = "今日|きょう|明日|あした";
+const dayPeriods = new Map<string, "today" | "tomorrow">([
+  ["今日", "today"], ["きょう", "today"], ["明日", "tomorrow"], ["あした", "tomorrow"],
+]);
+const leadingCollectionDay = new RegExp(`^(?:${collectionDay})(?:の|は|、)?\\s*`);
+const askDate = "(?:は(?:いつ(?:ですか)?)?|を教えて(?:ください)?)?";
+const collectionDate = "(?:収集日|回収日|(?<=ごみの)日)";
+const putOut = "出せ(?:ますか|る)";
+const collectionRequests = [
+  new RegExp(`^(?<date>${collectionMonth})の(?<items>.+?)(?:の)?(?:収集日|回収日)${askDate}$`),
+  new RegExp(`^(?<items>.+?)は(?<date>${collectionMonth})の(?:いつ|何日に)${putOut}$`),
+  new RegExp(`^(?<date>${nextCollection})(?<items>.+?)(?:(?:の)?${collectionDate}${askDate}|はいつ${putOut})$`),
+  new RegExp(`^(?<items>.+?)(?:の)?(?<date>${nextCollection})${collectionDate}${askDate}$`),
+  new RegExp(`^(?<date>${collectionDay})(?:の|は|、)?\\s*(?<items>.+?)(?:[はを]?${putOut}|(?:の)?(?:収集|回収)は?ありますか|(?:の)?${collectionDate}ですか)$`),
+  new RegExp(`^(?<items>.+?)は(?<date>${collectionDay})(?:に)?${putOut}$`),
+];
 
-export function collectionMonthTypes(question: string, district: string): WasteType[] | undefined {
-  const text = normalizeDistrict(question.trim()).replace(/[?。]$/, "");
-  if (!text.startsWith(district) || !/^[ので]/.test(text.slice(district.length))) return;
-  const request = text.slice(district.length + 1);
-  const items = (dateThenItems.exec(request) ?? itemsThenDate.exec(request))?.[1].trim();
-  if (!items) return;
-  const matches = [...items.matchAll(collectionItem)];
-  const last = matches.at(-1);
-  if (last && last.index + last[0].length === items.length) {
-    return [...new Set(matches.map(([, name]) => collectionItemTypes.get(name)!))];
+interface CollectionRequest {
+  period: "today" | "tomorrow" | "next" | "period";
+  wasteTypes: WasteType[];
+}
+
+export function collectionRequest(question: string, district?: string): CollectionRequest | undefined {
+  let request = normalizeDistrict(question.trim()).replace(/[?。]$/, "");
+  if (district) {
+    const day = leadingCollectionDay.exec(request)?.[0] ?? "";
+    const namedDistrict = request.slice(day.length);
+    if (!namedDistrict.startsWith(district)) return;
+    const prefix = /^(?:地区)?[ので]\s*、?\s*/.exec(namedDistrict.slice(district.length));
+    if (!prefix) return;
+    request = day + namedDistrict.slice(district.length + prefix[0].length);
+  } else {
+    request = request.replace(/^(?:うち|自分|わたし|私)の地区[ので]\s*/, "");
   }
+  for (const pattern of collectionRequests) {
+    const fields = pattern.exec(request)?.groups;
+    if (!fields) continue;
+    // 区切りの「と」と品目名の中の「と」を区別し、列挙全体の一致を確認する。
+    const items = fields.items.trim();
+    const matches = [...items.matchAll(collectionItem)];
+    const last = matches.at(-1);
+    if (last && last.index + last[0].length === items.length) {
+      const period = dayPeriods.get(fields.date) ?? (fields.date.endsWith("月") ? "period" : "next");
+      return { period, wasteTypes: [...new Set(matches.map(([, name]) => collectionItemTypes.get(name)!))] };
+    }
+  }
+}
+
+export function isCollectionDistrictReply(reply: string, district: string) {
+  const text = normalizeDistrict(reply.trim()).replace(/(?:地区)?(?:です)?。?$/, "");
+  return text === district;
 }
 
 export function namedWasteTypes(phrase: string): WasteType[] {
@@ -266,7 +307,8 @@ export function findCollectionDays(district: string, bounds: ReturnType<typeof c
   else if (end) heading = `${calendar.district}の${formatDay(start)}から${formatDay(end)}までのごみ収集予定です。`;
 
   const lines = selections.map(({ row, dates }) => {
-    const noDates = end ? "この期間の収集予定はありません。" : `${year}年度内で次回の予定はありません。`;
+    const noDates = start === end ? "この日の収集予定はありません。"
+      : end ? "この期間の収集予定はありません。" : `${year}年度内で次回の予定はありません。`;
     return "・" + row.label + "　" + (dates.length ? formatDates(dates) : noDates);
   });
   function includes(low: string, high: string) {
@@ -274,6 +316,9 @@ export function findCollectionDays(district: string, bounds: ReturnType<typeof c
   }
   if (includes(`${year}-12-29`, `${year}-12-31`)) lines.push("12月29日〜31日は、通常の収集時間や内容が変わる場合があります。");
   if (includes(`${year + 1}-01-01`, `${year + 1}-01-03`)) lines.push("1月1日〜3日は収集休止です。");
+  if (start === end && selections.some(({ row, dates }) => row.key !== "oversized" && dates.length)) {
+    lines.push("通常、ごみステーションには午前8時までに出してください。");
+  }
   if (selections.some(({ row, dates }) => row.key === "oversized" && dates.length)) {
     lines.push("粗大ごみは収集月の20日までに芳賀清掃社への予約が必要です。");
   }
