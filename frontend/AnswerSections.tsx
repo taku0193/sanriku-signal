@@ -8,7 +8,7 @@ export default function AnswerSections({ presentation, sources }: { presentation
       {presentation.conclusion && (
         <div className="answer-conclusion"><AnswerText text={presentation.conclusion} /></div>
       )}
-      {presentation.sections.map(({ label, text, sourceIndexes }) => {
+      {presentation.sections.map(({ label, text, sourceIndexes, fact }) => {
         const links = new Map<string, Source>();
         for (const index of sourceIndexes) {
           const source = sources[index];
@@ -17,8 +17,12 @@ export default function AnswerSections({ presentation, sources }: { presentation
         }
         return (
           <section className={sourceIndexes.length ? "answer-section" : "answer-section unconfirmed"} key={label}>
-            <h3>{label}</h3>
-            <div className="answer-section-text"><AnswerText text={text} /></div>
+            <div className={fact ? "answer-section-heading with-fact" : "answer-section-heading"}>
+              <h3>{label}</h3>
+              {fact && <dl className="answer-fact"><dt>{fact.label}</dt><dd>{fact.value}</dd></dl>}
+            </div>
+            {fact ? fact.note && <p className="answer-section-note">{fact.note}</p> :
+              <div className="answer-section-text"><AnswerText text={text} /></div>}
             {links.size > 0 && (
               <div className="answer-section-links">
                 {[...links.entries()].map(([href, source]) => (

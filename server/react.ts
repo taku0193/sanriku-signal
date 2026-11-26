@@ -747,14 +747,17 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
       const presentation = { conclusion, sections: compared.map(({ hours, record, access }) => {
         const sourceIndexes = [sources.length];
         sources.push(record);
-        let text = `通常の閉館は${hours.time}です。`;
+        const note = station && access ? stationAccessSentence(access, station) : undefined;
         if (access) {
           sourceIndexes.push(sources.length);
           sources.push(access);
-          const route = station && stationAccessSentence(access, station);
-          if (route) text += ` ${route}`;
         }
-        return { label: hours.label, text, sourceIndexes };
+        return {
+          label: hours.label,
+          text: `通常の閉館は${hours.time}です。` + (note ? " " + note : ""),
+          sourceIndexes,
+          fact: { label: "通常の閉館", value: hours.time, ...(note ? { note } : {}) },
+        };
       }) };
       onAction?.({ action: "answer" });
       return { action: "answer", answer: formatPresentation(presentation), presentation, sources, pending: null };

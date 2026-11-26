@@ -44,6 +44,7 @@ export interface AnswerSection {
   label: string;
   text: string;
   sourceIndexes: number[];
+  fact?: { label: string; value: string; note?: string };
 }
 
 export interface AnswerPresentation {

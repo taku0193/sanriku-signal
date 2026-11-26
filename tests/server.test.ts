@@ -187,6 +187,7 @@ test("駅名から比較する場合はアクセス案内と閉館時刻を別�
   assert.match(result.answer, /17:00/);
   assert.doesNotMatch(result.answer, /20:00/);
   const museum = result.presentation?.sections.find(({ label }) => label === "鯨と海の科学館");
+  assert.deepEqual(museum?.fact, { label: "通常の閉館", value: "17:00", note: "三陸鉄道の岩手船越駅から徒歩約10分。" });
   assert.deepEqual(museum?.sourceIndexes.map((index) => result.sources[index].id), ["museum-hours", "museum-access"]);
 });
 
