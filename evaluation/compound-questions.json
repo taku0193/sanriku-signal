@@ -1,0 +1,74 @@
+[
+  {
+    "id": "station-earlier-reversed",
+    "question": "道の駅山田と岩手船越駅が最寄りの施設なら、普段はどちらが早く閉まりますか？",
+    "required_patterns": ["鯨と海の科学館.{0,30}早く閉", "17:00|17時", "18:00|18時"],
+    "required_sources": {
+      "museum-access": "https://yamada-kujirakan.jp/facility/",
+      "museum-hours": "https://yamada-kujirakan.jp/facility/",
+      "oisuta-hours": "https://yamada-oisuta.jp/"
+    },
+    "presentation": {
+      "conclusion_pattern": "鯨と海の科学館.{0,30}早",
+      "section_count": 2,
+      "sections": [
+        {"patterns": ["鯨と海の科学館", "17:00|17時", "岩手船越駅"], "source_ids": ["museum-hours", "museum-access"]},
+        {"patterns": ["道の駅やまだ|おいすた", "18:00|18時"], "source_ids": ["oisuta-hours"]}
+      ]
+    }
+  },
+  {
+    "id": "station-walking-later",
+    "question": "岩手船越駅から徒歩で行ける施設と、おいすたでは、通常どっちが遅くまで開いていますか？",
+    "required_patterns": ["鯨と海の科学館", "17:00|17時", "18:00|18時"],
+    "required_sources": {
+      "museum-access": "https://yamada-kujirakan.jp/facility/",
+      "museum-hours": "https://yamada-kujirakan.jp/facility/",
+      "oisuta-hours": "https://yamada-oisuta.jp/"
+    },
+    "presentation": {
+      "conclusion_pattern": "(?:道の駅やまだ|おいすた).{0,30}遅",
+      "section_count": 2,
+      "sections": [
+        {"patterns": ["鯨と海の科学館", "17:00|17時", "岩手船越駅"], "source_ids": ["museum-hours", "museum-access"]},
+        {"patterns": ["道の駅やまだ|おいすた", "18:00|18時"], "source_ids": ["oisuta-hours"]}
+      ]
+    }
+  },
+  {
+    "id": "museum-closing-and-admission",
+    "question": "鯨と海の科学館の通常の閉館と最終入館はそれぞれ何時ですか？",
+    "required_patterns": ["閉館.{0,18}(?:17[:時]00|17時|午後\\s*5時)", "最終入館.{0,18}(?:16[:時]30|午後\\s*4時(?:半|30分))"],
+    "required_sources": {"museum-hours": "https://yamada-kujirakan.jp/facility/"}
+  },
+  {
+    "id": "oisuta-closing-and-new-year",
+    "question": "おいすたの通常の閉館時刻は何時ですか？ 元日も開いていますか？",
+    "required_patterns": ["18[:時]00|18時|午後\\s*6時", "(?:元日|1月1日).{0,20}(?:休館|休業|閉館|営業していません)|(?:休館|休業).{0,10}(?:元日|1月1日)"],
+    "required_sources": {"oisuta-hours": "https://yamada-oisuta.jp/"}
+  },
+  {
+    "id": "museum-child-fee-and-battery-sorting",
+    "question": "科学館の小学生の入館料と、使い切った乾電池の分別を教えてください。",
+    "required_patterns": ["小学生|小中学生", "150\\s*円", "乾電池", "(?:透明|半透明).{0,12}袋"],
+    "required_sources": {
+      "museum-fees": "https://yamada-kujirakan.jp/facility/",
+      "md-waste-batteries-and-lamps": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1"
+    },
+    "presentation": {
+      "sections": [
+        {"patterns": ["150\\s*円"], "source_ids": ["museum-fees"]},
+        {"patterns": ["乾電池", "(?:透明|半透明).{0,12}袋"], "source_ids": ["md-waste-batteries-and-lamps"]}
+      ]
+    }
+  },
+  {
+    "id": "oversized-booking-and-saturday-dropoff",
+    "question": "粗大ごみを収集してもらうなら何日までに予約しますか？ 平日に電話しづらいので、土曜に自分で持ち込めるかも知りたいです。",
+    "required_patterns": ["20\\s*日", "宮古清掃センター", "土曜|月.{0,4}土"],
+    "required_sources": {
+      "oversized-waste": "https://www.town.yamada.iwate.jp/fs/1/2/9/3/6/3/_/gominodashikataposter6_3.pdf#page=1",
+      "waste-dropoff": "https://www.town.yamada.iwate.jp/docs/1272.html"
+    }
+  }
+]

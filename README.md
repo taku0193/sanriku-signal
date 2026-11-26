@@ -128,11 +128,14 @@ Ollamaと埋め込み索引を用意し、Webと同じReActを観光・くらし
 ```bash
 npm run evaluate:server -- --output /tmp/sanriku-evaluation.json
 npm run evaluate:server -- --suite field --output /tmp/sanriku-field.json
+npm run evaluate:server -- --suite compound --output /tmp/sanriku-compound.json
 ```
 
 結果JSONには、ターンごとの回答・出典、Gemmaが選んだ検索先と検索方式、取得した資料ID、応答時間が入ります。駅から施設を特定する例だけ試すには `--case compare-by-station` を追加します。必要な語句・出典・行動の判定条件は [評価質問](evaluation/questions.json) にあります。検索上限、聞き返しの引き継ぎ、HTTPでのストリーミングは、Ollamaなしで `npm run test:server` を実行して確認できます。
 
 `field` は文化・地域行事、交通、住民手続きを各10問ずつ含む評価です。まず質問と期待する事実・出典を記録し、修正前の回答を保存します。検索ログの資料IDを確認すると、出典の収録、検索順位、回答に使った根拠のどこを直すべきか分かります。 [現地の質問を想定した30問](evaluation/field-questions.json)
+
+`compound` は、駅から施設を特定して閉館時刻を比べる質問や、粗大ごみの収集予約と持込みを一緒に尋ねる質問など6問です。各用件の事実と出典を確認し、比較では、施設を特定する出典と時刻の出典が該当する項目に付いていることも判定します。 [複数の条件を含む評価質問](evaluation/compound-questions.json)
 
 初回検索のみ・旧版の追加検索・Python版のReActを比較するには `python3 -B evaluate_rag.py` を使います。Python版のReActを実行するときは `--mode react` を指定します。
 

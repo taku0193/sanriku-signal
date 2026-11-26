@@ -8,6 +8,7 @@ import {
 } from "./calendars.js";
 import type { WasteType } from "./calendars.js";
 import type { RetrievalResult, Retriever, SearchMode, SearchStrategy } from "./embeddings.js";
+import { closingComparison, comparisonStation, EXCERPT_LIMIT, LIVE_STATUS, regularClosingQuestion, stationAccessSentence } from "./facilities.js";
 import { isObject, readTextFile } from "./files.js";
 import { chatJson, OllamaError, OllamaResponseError } from "./ollama.js";
 import { asksForUpcomingEvent, documentsEventYear, documentsUpcomingEvent, requestedEventYear } from "./periods.js";
@@ -17,7 +18,6 @@ import type { SourceReader } from "./records.js";
 const MAX_SEARCHES = 5;
 const MAX_DECISIONS = MAX_SEARCHES + 1;
 const EVIDENCE_REVIEW_TIMEOUT = 8_000;
-const EXCERPT_LIMIT = 600;
 const DETAIL_LIMIT = 800;
 const EARLIER_EXCERPT_LIMIT = 240;
 const PRIOR_LIMIT = 300;
@@ -396,8 +396,7 @@ export function makeDecider(model: string, timeoutMs?: number): Decider {
 
 const COLLECTION_DATE = /収集日|収集予定|回収日|収集.*日程|ごみ.*日程|ごみの日/;
 const EXCLUDED_COLLECTION_DATE = /(?:収集日(?:程)?|回収日|ごみの日)(?:の質問)?(?:では(?:なく|ありませ(?:ん)?|ない)|は(?:聞いてい|知りたく)ない|以外)/g;
-const WASTE_PROCEDURE = /(?:申[し込]|予約|受付).{0,24}(?:締[め切]|期限|何日まで|いつまで|何時まで|方法|どう)|分別(?:方法|を確認|を知|を教)|分け方|出し方/;
-const LIVE_STATUS = /混雑|行列|並ん|待ち時間|空席|空き|予約が取れ|運休|臨時|遅れ|開設/;
+const WASTE_PROCEDURE = /(?:申[し込]|予約|受付).{0,24}(?:締[め切]|期限|何日まで|いつまで|何時まで|方法|どう)|(?:何日|いつ|何時)まで(?:に)?(?:申[し込]|予約|受付)|分別(?:方法|を確認|を知|を教)|分け方|出し方/;
 
 function asksCollectionDate(text: string) {
   const query = normalize(text).replace(EXCLUDED_COLLECTION_DATE, "");
@@ -451,10 +450,9 @@ function referenceQuestion(question: string) {
 function citationSources(decision: Record<string, unknown>, evidence: ReadonlyMap<string, SourceRecord>, wording: string) {
   if (!knownSourceIds(decision.sources, evidence)) return [];
   const sources = [...new Set(decision.sources)].map((id) => evidence.get(id)!);
-  const station = /([\p{Script=Han}\p{Script=Katakana}]+駅)が最寄り/u.exec(wording)?.[1];
-  if (station && /どちら|比較|比べ/.test(wording)) {
-    const isAccess = (record: SourceRecord) => record.text.slice(0, EXCERPT_LIMIT).includes(station) &&
-      /徒歩|隣接|最寄り/.test(record.text.slice(0, EXCERPT_LIMIT));
+  const station = comparisonStation(wording);
+  if (station && /どちら|どっち|比較|比べ/.test(wording)) {
+    const isAccess = (record: SourceRecord) => Boolean(stationAccessSentence(record, station));
     const access = [...evidence.values()].find((record) => isAccess(record) && sources.some(({ url }) => url === record.url));
     if (access && !sources.some(isAccess)) sources.push(access);
   }
@@ -488,45 +486,6 @@ function readSections(value: unknown, evidence: ReadonlyMap<string, SourceRecord
     sections.push({ label, text, sourceIds: [...new Set(section.source_ids)] });
   }
   return sections.length >= 2 ? sections : undefined;
-}
-
-function regularClosingQuestion(wording: string) {
-  if (!/通常|普段/.test(wording) || LIVE_STATUS.test(normalize(wording)) ||
-      /今日|明日|当日|特定|祝日|曜日|連休|休館日|最終入館|レストラン|道路休憩施設|料金|いくら|駐車|行き方|[0-9]+月/.test(wording)) return undefined;
-  if (/遅く閉|遅くまで開/.test(wording)) return "later";
-  if (/早く閉/.test(wording)) return "earlier";
-}
-
-function closingHours(record: SourceRecord) {
-  const label = /^(.+)の(?:開館時間|営業時間)(?:・休館日)?$/.exec(record.title)?.[1];
-  const range = /通常の(?:開館時間|営業時間)は\s*(\d{1,2}):(\d{2})\s*[〜～~-]\s*(\d{1,2}):(\d{2})/.exec(
-    record.text.slice(0, EXCERPT_LIMIT).normalize("NFKC"));
-  if (!label || !range) return undefined;
-  const [openHour, openMinute, hour, minute] = range.slice(1).map(Number);
-  const closing = hour * 60 + minute;
-  if (openHour > 23 || openMinute > 59 || hour > 23 || minute > 59 || closing <= openHour * 60 + openMinute) return undefined;
-  return { label, time: range[3].padStart(2, "0") + ":" + range[4], closing };
-}
-
-function closingComparison(wording: string, evidence: ReadonlyMap<string, SourceRecord>, readSource?: SourceReader) {
-  const mentioned = normalize(wording).replace(/\s+/g, "");
-  const station = /([\p{Script=Han}\p{Script=Katakana}]+駅)が最寄り/u.exec(wording)?.[1];
-  const byFacility = new Map<string, {
-    record: SourceRecord; hours: NonNullable<ReturnType<typeof closingHours>>; anchor: SourceRecord; access?: SourceRecord;
-  }>();
-  for (const anchor of evidence.values()) {
-    for (const record of [anchor, ...(readSource?.(anchor) ?? [])]) {
-      const hours = closingHours(record);
-      if (!hours || byFacility.has(hours.label)) continue;
-      const exactName = [hours.label, ...(record.keywords ?? [])].some((name) =>
-        name.length >= 3 && mentioned.includes(normalize(name).replace(/\s+/g, "")));
-      const access = station && [...evidence.values()].find((item) =>
-        item.url === record.url && item.text.slice(0, EXCERPT_LIMIT).includes(station) &&
-        /徒歩|隣接|最寄り/.test(item.text.slice(0, EXCERPT_LIMIT)));
-      if (exactName || access) byFacility.set(hours.label, { record, hours, anchor, access: access || undefined });
-    }
-  }
-  return byFacility.size === 2 ? [...byFacility.values()] : undefined;
 }
 
 function referenceAnswer(answer: string) {
@@ -576,7 +535,7 @@ function configureSearch(event: SearchEvent, decision: Record<string, unknown>, 
     Object.assign(event, { query, strategy });
     return {
       key: JSON.stringify([event.target, strategy, compactText(normalize(normalizeQuery(query)))]),
-      lookup: (): Promise<LookupResult> => retrieve(query, signal, strategy),
+      lookup: (): Promise<LookupResult> => retrieve(query, signal, strategy, wording.join("\n")),
     };
   }
   if (event.target === "collection_calendars") {
@@ -776,6 +735,30 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
     const decisionState = referenceOnly
       ? { ...state, question: referenceOnly, follow_up: undefined, search_wording: undefined }
       : state;
+    const compared = closingOrder ? closingComparison(queryText, [...evidence.values()], readSource) : undefined;
+    if (compared?.every(({ record }) => evidence.has(record.id) && supportsRequestedSubject(record))) {
+      const [first, second] = compared;
+      const wantLater = closingOrder === "later";
+      const winner = (wantLater ? first.hours.closing > second.hours.closing : first.hours.closing < second.hours.closing) ? first : second;
+      const conclusion = first.hours.closing === second.hours.closing ? "通常の閉館時刻は同じです。" :
+        `通常は${winner.hours.label}の方が${wantLater ? "遅く" : "早く"}閉まります。`;
+      const station = comparisonStation(queryText);
+      const sources: SourceRecord[] = [];
+      const presentation = { conclusion, sections: compared.map(({ hours, record, access }) => {
+        const sourceIndexes = [sources.length];
+        sources.push(record);
+        let text = `通常の閉館は${hours.time}です。`;
+        if (access) {
+          sourceIndexes.push(sources.length);
+          sources.push(access);
+          const route = station && stationAccessSentence(access, station);
+          if (route) text += ` ${route}`;
+        }
+        return { label: hours.label, text, sourceIndexes };
+      }) };
+      onAction?.({ action: "answer" });
+      return { action: "answer", answer: formatPresentation(presentation), presentation, sources, pending: null };
+    }
     if (!reviewedEvidence && decide.reviewEvidence && actions.includes("answer")) {
       reviewedEvidence = true;
       try {
@@ -787,30 +770,6 @@ export async function runTurn(question: string, decide: Decider, retrieve: Retri
         if (!(error instanceof OllamaError)) throw error;
         onAction?.({ action: "review", status: "unavailable", source_ids: [] });
       }
-    }
-    const compared = closingOrder ? closingComparison(queryText, evidence, readSource) : undefined;
-    if (compared?.every(({ record }) => evidence.has(record.id) && supportsRequestedSubject(record))) {
-      const [first, second] = compared;
-      const wantLater = closingOrder === "later";
-      const winner = (wantLater ? first.hours.closing > second.hours.closing : first.hours.closing < second.hours.closing) ? first : second;
-      const conclusion = first.hours.closing === second.hours.closing ? "通常の閉館時刻は同じです。" :
-        `通常は${winner.hours.label}の方が${wantLater ? "遅く" : "早く"}閉まります。`;
-      const sources: SourceRecord[] = [];
-      const presentation = { conclusion, sections: compared.map(({ hours, record, access }) => {
-        const sourceIndexes = [sources.length];
-        sources.push(record);
-        let text = `通常の閉館は${hours.time}です。`;
-        if (access) {
-          sourceIndexes.push(sources.length);
-          sources.push(access);
-          const route = [...sentences.segment(access.text.slice(0, EXCERPT_LIMIT))]
-            .map(({ segment }) => segment.trim()).find((line) => line.includes("駅") && /徒歩|隣接|最寄り/.test(line));
-          if (route) text += ` ${route}`;
-        }
-        return { label: hours.label, text, sourceIndexes };
-      }) };
-      onAction?.({ action: "answer" });
-      return { action: "answer", answer: formatPresentation(presentation), presentation, sources, pending: null };
     }
     const missingHours = compared?.find(({ record }) => !evidence.has(record.id));
     let decision: Awaited<ReturnType<Decider>>;

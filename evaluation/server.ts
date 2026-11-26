@@ -39,8 +39,10 @@ const { values } = parseArgs({
   options: { model: { type: "string", default: DEFAULT_MODEL }, case: { type: "string" },
     output: { type: "string" }, suite: { type: "string", default: "standard" } },
 });
-if (values.suite !== "standard" && values.suite !== "field") throw new Error("評価セットは standard または field を指定してください。");
-const questions = readJsonFile<AnswerCase[]>(values.suite === "field" ? "evaluation/field-questions.json" : "evaluation/questions.json")
+const suites = new Map([["standard", "questions"], ["field", "field-questions"], ["compound", "compound-questions"]]);
+const suite = suites.get(values.suite);
+if (!suite) throw new Error("評価セットは standard、field、compound のいずれかを指定してください。");
+const questions = readJsonFile<AnswerCase[]>(`evaluation/${suite}.json`)
   .filter(({ id }) => !values.case || id === values.case);
 if (!questions.length) throw new Error(`評価質問が見つかりません。${values.case}`);
 
@@ -130,7 +132,7 @@ async function evaluateAnswer(item: AnswerCase) {
   return { id: item.id, passed, turns };
 }
 
-const retrieval = values.case || values.suite === "field" ? [] : await evaluateRetrieval();
+const retrieval = values.case || values.suite !== "standard" ? [] : await evaluateRetrieval();
 const answers = [];
 for (const question of questions) answers.push(await evaluateAnswer(question));
 const passed = answers.filter((row) => row.passed).length;

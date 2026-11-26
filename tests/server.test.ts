@@ -190,6 +190,29 @@ test("駅名から比較する場合はアクセス案内と閉館時刻を別�
   assert.deepEqual(museum?.sourceIndexes.map((index) => result.sources[index].id), ["museum-hours", "museum-access"]);
 });
 
+test("駅から施設を特定する比較は、最初の資料から両方の閉館とアクセスを出典付きで返せる", async () => {
+  const question = "岩手船越駅から徒歩で行ける施設と、おいすたでは、通常どっちが遅くまで開いていますか？";
+  const query = "岩手船越駅 おいすた 営業時間";
+  const actions: string[] = [];
+  const decide: Decider = async (state) => {
+    assert.equal(state.observations.length, 0);
+    return { action: "search", target: "official_documents", query };
+  };
+  decide.reviewEvidence = async () => assert.fail("比較に必要な資料がそろっている");
+  const result = await runTurn(question, decide, keyword, {
+    searchMode: "keyword", readSource: makeSourceReader(records), onAction: ({ action }) => actions.push(action),
+  });
+  assert.deepEqual(actions, ["search", "answer"]);
+  assert.match(result.presentation?.conclusion ?? "", /おいすたの方が遅く閉まります/);
+  const museum = result.presentation?.sections.find(({ label }) => label === "鯨と海の科学館");
+  assert.match(museum?.text ?? "", /17:00.*岩手船越駅から徒歩約10分/);
+  assert.deepEqual(museum?.sourceIndexes.map((index) => result.sources[index].id), ["museum-hours", "museum-access"]);
+  assert.match(result.answer, /18:00/);
+
+  const withDeadline = question + " 粗大ごみの予約締切も教えてください。";
+  assert.ok(!(await keyword(query, undefined, "keyword", withDeadline)).records.some(({ id }) => id === "museum-hours"));
+});
+
 test("別々の用件には対応する根拠を付け、共通の前置きを省く", async () => {
   const result = await runTurn("科学館の大人の料金と空き缶の出し方は？", async (state) => {
     assert.equal(state.answer_layout, "multiple");
@@ -567,6 +590,7 @@ test("暦の日付から年度を確定し、存在しない日付と未収録�
 test("収集日を除外した分別や予約締切の質問は一般資料で調べる", async () => {
   const cases = [
     ["大沢の粗大ごみ収集の申込みは何日締切？収集日の質問ではありません。", "oversized-waste", "収集月の20日までです。"],
+    ["粗大ごみを収集してもらうなら何日までに予約しますか？", "oversized-waste", "収集月の20日までです。"],
     ["割れた蛍光管は大沢の収集日ではなく分別を確認したい。", "md-waste-batteries-and-lamps", "紙で包んで燃やせないごみとして出します。"],
   ];
   for (const [question, source, answer] of cases) {
